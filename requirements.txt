@@ -1,0 +1,4 @@
+httpx
+pymongo
+pydub
+python-telegram-bot==20.3
