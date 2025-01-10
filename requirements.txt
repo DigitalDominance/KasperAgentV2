@@ -1,10 +1,10 @@
-websocket-client==1.5.2
-python-telegram-bot==20.3
-requests==2.31.0
-pydub==0.25.1
-elevenlabs==1.50.3
-websockets==11.0.3
-openai
-httpx==0.24.1
-pymongo==4.5.0
 
+python-telegram-bot==20.3
+pymongo==4.5.0
+httpx==0.24.1
+pydub==0.25.1
+py-mini-racer==0.6.0
+websocket-client==1.5.2
+requests==2.31.0
+elevenlabs==1.50.3
+openai
