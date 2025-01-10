@@ -1,8 +1,10 @@
+
 from pymongo import MongoClient, errors
 from pymongo.collection import ReturnDocument
-from pydantic import BaseModel, ValidationError
-from typing import Optional
+from pydantic import BaseModel, ValidationError, Field
+from typing import Optional, List
 import logging
+from datetime import datetime
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -14,6 +16,8 @@ class User(BaseModel):
     credits: int
     wallet: str
     private_key: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_active: Optional[datetime] = None
 
 class DBManager:
     def __init__(self, mongo_uri="mongodb://localhost:27017/", db_name="kasper_ai_bot"):
@@ -22,7 +26,7 @@ class DBManager:
             self.db = self.client[db_name]
             self.users = self.db["users"]
 
-            # Ensure an index on user_id for faster lookups
+            # Ensure indexes
             self.users.create_index("user_id", unique=True)
             logger.info("Connected to MongoDB and ensured indexes.")
         except errors.ConnectionError as e:
@@ -60,7 +64,7 @@ class DBManager:
         try:
             updated_user = self.users.find_one_and_update(
                 {"user_id": user_id},
-                {"$set": {"credits": credits}},
+                {"$set": {"credits": credits, "last_active": datetime.utcnow()}},
                 return_document=ReturnDocument.AFTER
             )
             if updated_user:
@@ -69,6 +73,17 @@ class DBManager:
                 logger.warning(f"User {user_id} not found for updating credits.")
         except Exception as e:
             logger.error(f"Error updating credits for user {user_id}: {e}")
+
+    def update_last_active(self, user_id: int):
+        """Update the last active timestamp for a user."""
+        try:
+            self.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"last_active": datetime.utcnow()}}
+            )
+            logger.info(f"Updated last_active timestamp for user {user_id}.")
+        except Exception as e:
+            logger.error(f"Error updating last_active for user {user_id}: {e}")
 
     def delete_user(self, user_id: int):
         """Delete a user from the database."""
@@ -80,6 +95,23 @@ class DBManager:
                 logger.warning(f"User {user_id} not found in the database.")
         except Exception as e:
             logger.error(f"Error deleting user {user_id}: {e}")
+
+    def bulk_update_credits(self, updates: List[dict]):
+        """Bulk update user credits."""
+        try:
+            operations = [
+                {
+                    "updateOne": {
+                        "filter": {"user_id": update["user_id"]},
+                        "update": {"$set": {"credits": update["credits"], "last_active": datetime.utcnow()}}
+                    }
+                }
+                for update in updates
+            ]
+            result = self.users.bulk_write(operations)
+            logger.info(f"Bulk update completed. Matched: {result.matched_count}, Modified: {result.modified_count}")
+        except Exception as e:
+            logger.error(f"Error performing bulk update: {e}")
 
     def close_connection(self):
         """Close the MongoDB connection."""

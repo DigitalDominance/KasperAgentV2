@@ -1,3 +1,4 @@
+
 import os
 import logging
 import asyncio
@@ -154,14 +155,17 @@ async def start_command(update, context):
         wallet_address, private_key = await wallet.generate_wallet()
         if wallet_address and private_key:
             db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
+            logger.info(f"New user registered: {user_id}")
             await update.message.reply_text(
-                f"Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
+                f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
             )
         else:
-            await update.message.reply_text("Error generating wallet. Please try again later.")
+            logger.error(f"Failed to generate wallet for user {user_id}")
+            await update.message.reply_text("⚠️ Error generating wallet. Please try again later.")
     else:
+        db.update_last_active(user_id)
         await update.message.reply_text(
-            f"Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}"
+            f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
         )
 
 async def handle_text_message(update, context):
@@ -200,7 +204,7 @@ async def topup_command(update, context):
 
     wallet_address = user["wallet"]
     await update.message.reply_text(
-        f"To top up, send KASPER tokens to your wallet: {wallet_address}. 1 credit = 100 KASPER."
+        f"💰 To top up, send KASPER tokens to your wallet: {wallet_address}. 1 credit = 100 KASPER."
     )
 
 # Main function
@@ -209,3 +213,15 @@ def main():
 
     # Command handlers
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+
+    # Start background tasks
+    loop = asyncio.get_event_loop()
+    loop.create_task(monitor_balances())
+
+    logger.info("🚀 Starting Kasper AI Bot...")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,6 @@
+
 import logging
 import httpx
-import json
 import asyncio
 from typing import Optional
 
@@ -53,12 +53,16 @@ class WalletBackend:
 
     async def get_kas_balance(self, wallet_address):
         """Fetch KAS balance using RPC."""
-        result = await self.rpc_request("getBalance", {"address": wallet_address})
-        if result:
-            balance = float(result.get("balance", 0))
-            self.logger.info(f"KAS balance for {wallet_address}: {balance}")
-            return balance
-        return 0.0
+        try:
+            result = await self.rpc_request("getBalance", {"address": wallet_address})
+            if result:
+                balance = float(result.get("balance", 0))
+                self.logger.info(f"KAS balance for {wallet_address}: {balance}")
+                return balance
+            return 0.0
+        except Exception as e:
+            self.logger.error(f"Error fetching KAS balance for {wallet_address}: {e}")
+            return 0.0
 
     async def get_kasper_balance(self, wallet_address):
         """Fetch KRC20 (KASPER) balance using the Kasplex API."""
@@ -81,42 +85,54 @@ class WalletBackend:
 
     async def send_kas(self, from_address, to_address, amount, private_key):
         """Send KAS transaction using RPC."""
-        params = {
-            "fromAddress": from_address,
-            "toAddress": to_address,
-            "amount": amount,
-            "privateKey": private_key
-        }
-        result = await self.rpc_request("sendTransaction", params)
-        if result:
-            self.logger.info(f"Sent {amount} KAS from {from_address} to {to_address}.")
-            return result
-        self.logger.error(f"Failed to send {amount} KAS from {from_address} to {to_address}.")
-        return None
+        try:
+            params = {
+                "fromAddress": from_address,
+                "toAddress": to_address,
+                "amount": amount,
+                "privateKey": private_key
+            }
+            result = await self.rpc_request("sendTransaction", params)
+            if result:
+                self.logger.info(f"Sent {amount} KAS from {from_address} to {to_address}.")
+                return result
+            self.logger.error(f"Failed to send {amount} KAS from {from_address} to {to_address}.")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error in send_kas: {e}")
+            return None
 
     async def send_krc20(self, from_address, to_address, amount, private_key):
         """Send KRC20 (KASPER) transaction using RPC."""
-        params = {
-            "fromAddress": from_address,
-            "toAddress": to_address,
-            "amount": amount,
-            "privateKey": private_key,
-            "tokenSymbol": "KASPER"
-        }
-        result = await self.rpc_request("sendTransaction", params)
-        if result:
-            self.logger.info(f"Sent {amount} KASPER from {from_address} to {to_address}.")
-            return result
-        self.logger.error(f"Failed to send {amount} KASPER from {from_address} to {to_address}.")
-        return None
+        try:
+            params = {
+                "fromAddress": from_address,
+                "toAddress": to_address,
+                "amount": amount,
+                "privateKey": private_key,
+                "tokenSymbol": "KASPER"
+            }
+            result = await self.rpc_request("sendTransaction", params)
+            if result:
+                self.logger.info(f"Sent {amount} KASPER from {from_address} to {to_address}.")
+                return result
+            self.logger.error(f"Failed to send {amount} KASPER from {from_address} to {to_address}.")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error in send_krc20: {e}")
+            return None
 
     async def generate_wallet(self):
         """Generate a new wallet address using RPC."""
-        result = await self.rpc_request("generateNewAddress")
-        if result:
-            address = result.get("address")
-            private_key = result.get("privateKey")
-            self.logger.info(f"Generated wallet address: {address}")
-            return address, private_key
-        self.logger.error("Failed to generate wallet address.")
-        return None, None
+        try:
+            result = await self.rpc_request("generateNewAddress")
+            if result:
+                address = result.get("address")
+                private_key = result.get("privateKey")
+                self.logger.info(f"Generated wallet address: {address}")
+                return address, private_key
+            self.logger.error("Failed to generate wallet address.")
+            return None, None
+        except Exception as e:
+            self.logger.error(f"Error in generate_wallet: {e}")
+            return None, None
