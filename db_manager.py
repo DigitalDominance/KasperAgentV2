@@ -20,17 +20,15 @@ class User(BaseModel):
     last_active: Optional[datetime] = None
 
 class DBManager:
-    def __init__(self, mongo_uri="mongodb://localhost:27017/", db_name="kasper_ai_bot"):
+    def __init__(self):
         try:
-            self.client = MongoClient(mongo_uri, maxPoolSize=50)  # Connection pooling
-            self.db = self.client[db_name]
+            mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+            self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+            self.db = self.client["kasperdb"]
             self.users = self.db["users"]
-
-            # Ensure indexes
             self.users.create_index("user_id", unique=True)
-            logger.info("Connected to MongoDB and ensured indexes.")
-        except errors.ServerSelectionTimeoutError as e:
-            logger.error(f"Error connecting to MongoDB: {e}")
+        except Exception as e:
+            logging.error(f"Error connecting to MongoDB: {e}")
             raise
 
     def add_user(self, user_id: int, credits: int, wallet: str, private_key: str):
