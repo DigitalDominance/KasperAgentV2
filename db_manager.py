@@ -29,7 +29,7 @@ class DBManager:
             # Ensure indexes
             self.users.create_index("user_id", unique=True)
             logger.info("Connected to MongoDB and ensured indexes.")
-        except errors.ConnectionError as e:
+        except errors.ServerSelectionTimeoutError as e:
             logger.error(f"Error connecting to MongoDB: {e}")
             raise
 
