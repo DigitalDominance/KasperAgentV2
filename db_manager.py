@@ -23,7 +23,7 @@ class User(BaseModel):
 class DBManager:
     def __init__(self):
         try:
-            mongo_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
+            mongo_uri = os.getenv("MONGODB_URI")
             self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
             self.db = self.client["kasperdb"]
             self.users = self.db["users"]
