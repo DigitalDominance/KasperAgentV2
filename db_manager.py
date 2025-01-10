@@ -4,6 +4,7 @@ from pymongo.collection import ReturnDocument
 from pydantic import BaseModel, ValidationError, Field
 from typing import Optional, List
 import logging
+import os
 from datetime import datetime
 
 # Set up logging
