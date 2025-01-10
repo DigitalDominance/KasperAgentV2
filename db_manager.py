@@ -1,102 +1,90 @@
+from pymongo import MongoClient, errors
+from pymongo.collection import ReturnDocument
+from pydantic import BaseModel, ValidationError
+from typing import Optional
 import logging
-import httpx
-import json
-import os
 
-class WalletBackend:
-    def __init__(self, kaspa_rpc_url="http://localhost:16110", kasplex_api_url="https://api.kasplex.org"):
-        self.kaspa_rpc_url = kaspa_rpc_url
-        self.kasplex_api_url = kasplex_api_url
-        self.logger = logging.getLogger(__name__)
-        self.main_wallet = os.getenv("MAIN_WALLET_ADDRESS", "")
-        self.main_wallet_private_key = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
+# Set up logging
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
-    async def rpc_request(self, method, params):
-        """Make an RPC request to the Kaspa node."""
+# Define user schema using pydantic
+class User(BaseModel):
+    user_id: int
+    credits: int
+    wallet: str
+    private_key: str
+
+class DBManager:
+    def __init__(self, mongo_uri="mongodb://localhost:27017/", db_name="kasper_ai_bot"):
         try:
-            payload = {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": method,
-                "params": params
-            }
-            async with httpx.AsyncClient() as client:
-                response = await client.post(self.kaspa_rpc_url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                if "error" in data:
-                    self.logger.error(f"RPC error: {data['error']}")
-                    return None
-                return data.get("result")
+            self.client = MongoClient(mongo_uri, maxPoolSize=50)  # Connection pooling
+            self.db = self.client[db_name]
+            self.users = self.db["users"]
+
+            # Ensure an index on user_id for faster lookups
+            self.users.create_index("user_id", unique=True)
+            logger.info("Connected to MongoDB and ensured indexes.")
+        except errors.ConnectionError as e:
+            logger.error(f"Error connecting to MongoDB: {e}")
+            raise
+
+    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str):
+        """Add a new user to the database."""
+        try:
+            user_data = User(user_id=user_id, credits=credits, wallet=wallet, private_key=private_key).dict()
+            self.users.insert_one(user_data)
+            logger.info(f"User {user_id} added to the database.")
+        except ValidationError as e:
+            logger.error(f"Validation error while adding user: {e}")
+        except errors.DuplicateKeyError:
+            logger.warning(f"User {user_id} already exists in the database.")
         except Exception as e:
-            self.logger.error(f"Error making RPC request: {e}")
+            logger.error(f"Error adding user {user_id}: {e}")
+
+    def get_user(self, user_id: int) -> Optional[dict]:
+        """Retrieve a user from the database."""
+        try:
+            user = self.users.find_one({"user_id": user_id})
+            if user:
+                logger.info(f"User {user_id} retrieved from the database.")
+                return user
+            logger.warning(f"User {user_id} not found in the database.")
+            return None
+        except Exception as e:
+            logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
-    async def get_kas_balance(self, wallet_address):
-        """Fetch KAS balance using RPC."""
-        result = await self.rpc_request("getBalance", {"address": wallet_address})
-        if result:
-            balance = float(result.get("balance", 0))
-            self.logger.info(f"KAS balance for {wallet_address}: {balance}")
-            return balance
-        return 0.0
-
-    async def get_kasper_balance(self, wallet_address):
-        """Fetch KRC20 (KASPER) balance using Kasplex API."""
+    def update_user_credits(self, user_id: int, credits: int):
+        """Update a user's credits."""
         try:
-            api_url = f"{self.kasplex_api_url}/v1/krc20/address/{wallet_address}/token/KASPER"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(api_url)
-                response.raise_for_status()
-                data = response.json()
-                if "result" in data and data["result"]:
-                    balance = float(data["result"][0].get("balance", "0"))
-                    self.logger.info(f"KASPER balance for {wallet_address}: {balance}")
-                    return balance
-                else:
-                    self.logger.warning(f"No KASPER balance found for {wallet_address}.")
-                    return 0.0
+            updated_user = self.users.find_one_and_update(
+                {"user_id": user_id},
+                {"$set": {"credits": credits}},
+                return_document=ReturnDocument.AFTER
+            )
+            if updated_user:
+                logger.info(f"Updated credits for user {user_id} to {credits}.")
+            else:
+                logger.warning(f"User {user_id} not found for updating credits.")
         except Exception as e:
-            self.logger.error(f"Error fetching KASPER balance for {wallet_address}: {e}")
-            return 0.0
+            logger.error(f"Error updating credits for user {user_id}: {e}")
 
-    async def send_kas(self, from_address, to_address, amount, private_key):
-        """Send KAS transaction using RPC."""
-        params = {
-            "fromAddress": from_address,
-            "toAddress": to_address,
-            "amount": amount,
-            "privateKey": private_key
-        }
-        result = await self.rpc_request("createRawTransaction", params)
-        if result:
-            self.logger.info(f"Sent {amount} KAS from {from_address} to {to_address}.")
-        else:
-            self.logger.error(f"Failed to send {amount} KAS from {from_address} to {to_address}.")
+    def delete_user(self, user_id: int):
+        """Delete a user from the database."""
+        try:
+            result = self.users.delete_one({"user_id": user_id})
+            if result.deleted_count > 0:
+                logger.info(f"User {user_id} deleted from the database.")
+            else:
+                logger.warning(f"User {user_id} not found in the database.")
+        except Exception as e:
+            logger.error(f"Error deleting user {user_id}: {e}")
 
-    async def send_krc20(self, from_address, to_address, amount, private_key):
-        """Send KRC20 (KASPER) transaction using RPC."""
-        params = {
-            "fromAddress": from_address,
-            "toAddress": to_address,
-            "amount": amount,
-            "privateKey": private_key,
-            "tokenSymbol": "KASPER"
-        }
-        result = await self.rpc_request("createRawTransaction", params)
-        if result:
-            self.logger.info(f"Sent {amount} KASPER from {from_address} to {to_address}.")
-        else:
-            self.logger.error(f"Failed to send {amount} KASPER from {from_address} to {to_address}.")
-
-    async def generate_wallet(self):
-        """Generate a new Kaspa wallet using RPC."""
-        result = await self.rpc_request("createNewAddress", {})
-        if result:
-            address = result.get("address")
-            private_key = result.get("privateKey")
-            self.logger.info(f"Generated wallet: {address}")
-            return address, private_key
-        else:
-            self.logger.error("Failed to generate wallet.")
-            return None, None
+    def close_connection(self):
+        """Close the MongoDB connection."""
+        try:
+            self.client.close()
+            logger.info("MongoDB connection closed.")
+        except Exception as e:
+            logger.error(f"Error closing MongoDB connection: {e}")
