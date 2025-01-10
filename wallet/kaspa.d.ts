@@ -1,0 +1,1 @@
+// TypeScript definitions for Kaspa wallet.

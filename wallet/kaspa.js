@@ -1,0 +1,1 @@
+// Kaspa wallet logic (placeholder content)
