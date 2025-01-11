@@ -117,9 +117,10 @@ async def monitor_balances():
             tasks = []
 
             for user in users:
-                wallet_address = user["wallet"]
-                private_key = user["private_key"]
-                tasks.append(process_user_balance(wallet_address, private_key, user["user_id"]))
+                wallet_address = user.get("wallet")
+                private_key = user.get("private_key")
+                if wallet_address and private_key:
+                    tasks.append(process_user_balance(wallet_address, private_key, user["user_id"]))
 
             await asyncio.gather(*tasks)
         except Exception as e:
@@ -140,7 +141,9 @@ async def process_user_balance(wallet_address, private_key, user_id):
                 await wallet.send_kas(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
             credits_to_add = int(kasper_balance // CREDIT_CONVERSION_RATE)
             if credits_to_add > 0:
-                db.update_user_credits(user_id, db.get_user(user_id)["credits"] + credits_to_add)
+                user = db.get_user(user_id)
+                if user:
+                    db.update_user_credits(user_id, user["credits"] + credits_to_add)
     except Exception as e:
         logger.error(f"Error processing balance for user {user_id}: {e}")
 
@@ -152,8 +155,12 @@ async def start_command(update, context):
         if not user:
             wallet_data = wallet.create_wallet()
             if wallet_data and wallet_data.get("success"):
-                wallet_address = wallet_data["address"]
-                private_key = wallet_data["privateKey"]
+                wallet_address = wallet_data.get("receivingAddress")
+                private_key = wallet_data.get("xPrv")
+
+                if not wallet_address or not private_key:
+                    raise ValueError("Wallet data is incomplete")
+
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
                 await update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
