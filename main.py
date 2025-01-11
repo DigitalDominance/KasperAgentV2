@@ -18,7 +18,7 @@ ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 MAIN_WALLET_ADDRESS = os.getenv("MAIN_WALLET_ADDRESS", "")
 MAIN_WALLET_PRIVATE_KEY = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
-CREDIT_CONVERSION_RATE = 100  # 1 credit = 100 KASPER
+CREDIT_CONVERSION_RATE = 200  # 1 credit = 200 KASPER
 
 # Logging setup
 logging.basicConfig(
@@ -164,7 +164,7 @@ async def start_command(update, context):
                 # Add user to the database with 3 free credits
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. "
+                    f"👻 Hey Fam! Its Agent Kasper! Send KASPER to {wallet_address} for credits (200 KASPER = 1 Credit). "
                     f"You have 3 free credits and 3 total credits."
                 )
             else:
@@ -173,8 +173,8 @@ async def start_command(update, context):
             # If the user exists, show their current total and free credits
             total_credits = user.get("credits", 0)
             await update.message.reply_text(
-                f"👋 Welcome back! You have {total_credits} credits in total. "
-                f"Your deposit wallet is: {user['wallet']}."
+                f"👻 Hey Fam! Its Agent Kasper! You have {total_credits} credits in total. "
+                f"Send KASPER to: {user['wallet']} for credits (200 KASPER = 1 Credit)."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
