@@ -144,7 +144,7 @@ async def topup_command(update, context):
 
                     if kasper_balance > 0:
                         logger.info(f"Detected balance: {kasper_balance} sompi")
-                        transaction_result = user_id.send_krc20_transaction(
+                        transaction_result = wallet.send_krc20_transaction(
                             from_address=wallet_address,
                             to_address=MAIN_WALLET_ADDRESS,
                             amount=kasper_balance,
