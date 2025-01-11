@@ -137,6 +137,7 @@ class WalletBackend:
             logger.error(f"Failed to send KRC20 transaction: {transaction_data.get('error')}")
             return {"success": False, "error": transaction_data.get('error')}
 
+
 # Example usage:
 if __name__ == "__main__":
     backend = WalletBackend()
