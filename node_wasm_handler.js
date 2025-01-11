@@ -30,7 +30,7 @@ async function connectToDatabase() {
         const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
         await client.connect();
         db = client.db("kasperdb");
-        console.log("✅ MongoDB connection established");
+        console.debug("✅ MongoDB connection established"); // Debug log, not stdout
     } catch (err) {
         console.error("❌ Failed to connect to MongoDB:", err.message);
         process.exit(1);
@@ -55,8 +55,7 @@ async function getUserPrivateKey(user_id) {
 
         return user.private_key;
     } catch (err) {
-        console.error(`❌ Error retrieving private key for user_id ${user_id}: ${err.message}`);
-        throw err;
+        throw new Error(`Error retrieving private key for user_id ${user_id}: ${err.message}`);
     }
 }
 
@@ -89,31 +88,11 @@ async function createWallet() {
     }
 }
 
-// Get balance for an address
-async function getBalance(address) {
-    try {
-        await rpc.connect();
-        const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
-        await rpc.disconnect();
-
-        console.log(
-            JSON.stringify({
-                success: true,
-                address,
-                balance: balances[0]?.amount || 0,
-            })
-        );
-    } catch (err) {
-        console.error(JSON.stringify({ success: false, error: err.message }));
-    }
-}
-
 // Send a KAS transaction
 async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     try {
         const privateKeyStr = await getUserPrivateKey(user_id);
         const privateKey = new PrivateKey(privateKeyStr);
-        const keypair = privateKey.toKeypair();
 
         await rpc.connect();
         const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
@@ -125,9 +104,10 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
 
         const result = await rpc.submitTransaction({ transaction });
         console.log(JSON.stringify({ success: true, txid: result.transactionId }));
-        await rpc.disconnect();
     } catch (err) {
-        console.error(JSON.stringify({ success: false, error: err.message }));
+        console.log(JSON.stringify({ success: false, error: err.message })); // Send clean JSON error
+    } finally {
+        await rpc.disconnect();
     }
 }
 
@@ -149,9 +129,10 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
         const result = await rpc.submitTransaction({ transaction });
 
         console.log(JSON.stringify({ success: true, txid: result.transactionId }));
-        await rpc.disconnect();
     } catch (err) {
-        console.error(JSON.stringify({ success: false, error: err.message }));
+        console.log(JSON.stringify({ success: false, error: err.message })); // Send clean JSON error
+    } finally {
+        await rpc.disconnect();
     }
 }
 
@@ -167,10 +148,6 @@ if (require.main === module) {
                 case "createWallet":
                     await createWallet();
                     break;
-                case "getBalance":
-                    if (!args[0]) throw new Error("Address is required for getBalance");
-                    await getBalance(args[0]);
-                    break;
                 case "sendTransaction":
                     if (args.length < 4) throw new Error("Invalid arguments for sendTransaction");
                     await sendTransaction(parseInt(args[0]), args[1], args[2], args[3]);
@@ -180,10 +157,10 @@ if (require.main === module) {
                     await sendKRC20Transaction(parseInt(args[0]), args[1], args[2], args[3], args[4]);
                     break;
                 default:
-                    console.error(JSON.stringify({ success: false, error: "Invalid command" }));
+                    console.log(JSON.stringify({ success: false, error: "Invalid command" }));
             }
         } catch (e) {
-            console.error(JSON.stringify({ success: false, error: e.message }));
+            console.log(JSON.stringify({ success: false, error: e.message })); // Send clean JSON error
         }
     })();
 }
