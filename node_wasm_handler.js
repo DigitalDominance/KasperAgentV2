@@ -26,12 +26,7 @@ const rpc = new RpcClient({
 // Utility to create wallet
 async function createWallet() {
     try {
-        console.log("Creating wallet...");
-
-        // Generate the mnemonic and keys
         const mnemonic = Mnemonic.random();
-        console.log("Generated Mnemonic:", mnemonic.phrase);
-
         const seed = mnemonic.toSeed();
         const xPrv = new XPrv(seed);
 
@@ -43,11 +38,8 @@ async function createWallet() {
         const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
         const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
 
-        console.log("Receiving Address:", receiveAddress);
-        console.log("Change Address:", changeAddress);
-
-        // Explicitly output the JSON result as the last line
-        const result = {
+        // Return only JSON
+        return JSON.stringify({
             success: true,
             mnemonic: mnemonic.phrase,
             receivingAddress: {
@@ -61,21 +53,14 @@ async function createWallet() {
                 payload: changeAddress.payload,
             },
             xPrv: xPrv.intoString("xprv"),
-        };
-
-        // Ensure this is the final output to stdout
-        console.log(JSON.stringify(result));
-        return result;
+        });
     } catch (err) {
-        console.error("Error creating wallet:", err);
-
-        // Ensure errors are returned as JSON
-        const errorResult = { success: false, error: err.message };
-        console.log(JSON.stringify(errorResult));
-        return errorResult;
+        // Return error as JSON
+        return JSON.stringify({ success: false, error: err.message });
     }
 }
 
+console.log(await createWallet());
 
 // Get balance for an address
 async function getBalance(address) {
