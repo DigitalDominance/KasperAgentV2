@@ -30,13 +30,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize dependencies
 db = DBManager()
-wallet = WalletBackend(
-    kaspa_rpc_url="http://localhost:16110",
-    kasplex_api_url="https://api.kasplex.org",
-    rpc_timeout=10,
-    rpc_max_retries=3,
-    rpc_retry_delay=2
-)
+wallet = WalletBackend()
+
 USER_MESSAGE_LIMITS = defaultdict(lambda: {
     "count": 0,
     "reset_time": datetime.utcnow() + timedelta(hours=24),
