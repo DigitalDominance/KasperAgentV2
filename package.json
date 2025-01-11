@@ -7,7 +7,7 @@
     "start": "node node_wasm_handler.js"
   },
   "dependencies": {
-    "kaspa-wasm": "0.13.0"
+    "kaspa-wasm": "0.13.0",
     "events": "^3.3.0",
     "websocket": "^1.0.34"
   },
