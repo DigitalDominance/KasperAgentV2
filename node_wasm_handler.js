@@ -27,14 +27,17 @@ const rpc = new RpcClient({
 // Connect to MongoDB
 async function connectToDatabase() {
     try {
-        const client = new MongoClient(mongoUri);
+        const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
         await client.connect();
         db = client.db("kasperdb");
+        console.log("✅ MongoDB connection established");
     } catch (err) {
-        process.exit(1);
+        console.error("❌ Failed to connect to MongoDB:", err.message);
+        process.exit(1); // Exit the process if database connection fails
     }
 }
 
+// Retrieve user's private key from the database
 async function getUserPrivateKey(user_id) {
     try {
         if (typeof user_id !== "number") {
@@ -52,11 +55,10 @@ async function getUserPrivateKey(user_id) {
 
         return user.private_key;
     } catch (err) {
-        throw new Error(`Error retrieving private key for user_id ${user_id}: ${err.message}`);
+        console.error(`❌ Error retrieving private key for user_id ${user_id}: ${err.message}`);
+        throw err;
     }
 }
-
-
 
 // Utility to create a new wallet
 async function createWallet() {
@@ -179,13 +181,16 @@ if (require.main === module) {
                     await createWallet();
                     break;
                 case "getBalance":
+                    if (!args[0]) throw new Error("Address is required for getBalance");
                     await getBalance(args[0]);
                     break;
                 case "sendTransaction":
-                    await sendTransaction(args[0], args[1], args[2], args[3]);
+                    if (args.length < 4) throw new Error("Invalid arguments for sendTransaction");
+                    await sendTransaction(parseInt(args[0]), args[1], args[2], args[3]);
                     break;
                 case "sendKRC20Transaction":
-                    await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
+                    if (args.length < 5) throw new Error("Invalid arguments for sendKRC20Transaction");
+                    await sendKRC20Transaction(parseInt(args[0]), args[1], args[2], args[3], args[4]);
                     break;
                 default:
                     console.error(JSON.stringify({ success: false, error: "Invalid command" }));
