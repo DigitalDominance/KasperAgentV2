@@ -2,8 +2,8 @@
 import logging
 import asyncio
 from typing import Optional
-from wasm.resolver import Resolver
-from wasm.rpc_client import RpcClient
+from wasm import Resolver
+from wasm import RpcClient
 
 
 
