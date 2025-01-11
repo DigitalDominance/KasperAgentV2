@@ -4,7 +4,8 @@ import logging
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
 
 class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
@@ -27,16 +28,32 @@ class WalletBackend:
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Attempt to parse JSON from the stdout
-            try:
-                json_data = json.loads(stdout)
-                return json_data
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode JSON. Raw output: {stdout}")
+            # Extract JSON from the output
+            json_output = self.extract_json(stdout)
+            if json_output:
+                return json_output
+            else:
+                logger.error("Failed to decode JSON from Node.js output.")
+                logger.error(stdout)
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
+
+    def extract_json(self, raw_output):
+        """Extract the valid JSON object from the raw output."""
+        try:
+            # Find and parse the last valid JSON object in the output
+            lines = raw_output.splitlines()
+            for line in reversed(lines):
+                try:
+                    return json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+            return None
+        except Exception as e:
+            logger.error(f"Error extracting JSON: {e}")
+            return None
 
     def create_wallet(self):
         """Create a new wallet."""
