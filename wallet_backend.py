@@ -9,36 +9,34 @@ logging.basicConfig(level=logging.INFO)
 class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
-
     def run_node_command(self, command, *args):
-    
+    """Run a Node.js command and handle the response."""
         try:
-        result = subprocess.run(
-            ["node", self.node_script_path, command, *args],
-            capture_output=True,
-            text=True,
-        )
-        stdout = result.stdout.strip()
-        stderr = result.stderr.strip()
+            result = subprocess.run(
+                ["node", self.node_script_path, command, *args],
+                capture_output=True,
+                text=True,
+            )
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
 
         # Log stdout and stderr for debugging
-        if stdout:
-            logger.info(f"Node.js stdout for {command}: {stdout}")
-        if stderr:
-            logger.error(f"Node.js stderr for {command}: {stderr}")
+            if stdout:
+                logger.info(f"Node.js stdout for {command}: {stdout}")
+            if stderr:
+                logger.error(f"Node.js stderr for {command}: {stderr}")
 
         # Extract JSON from stdout
-        json_data = self.extract_json(stdout)
-        if json_data:
-            return json_data
-        else:
-            logger.error("Failed to extract JSON. Raw output:")
-            logger.error(stdout)
-            return {"success": False, "error": "Failed to extract JSON from Node.js output"}
-    except Exception as e:
-        logger.error(f"Exception when running {command}: {e}")
-        return {"success": False, "error": str(e)}
-
+            json_data = self.extract_json(stdout)
+            if json_data:
+                return json_data
+            else:
+                logger.error("Failed to extract JSON. Raw output:")
+                logger.error(stdout)
+                return {"success": False, "error": "Failed to extract JSON from Node.js output"}
+        except Exception as e:
+            logger.error(f"Exception when running {command}: {e}")
+            return {"success": False, "error": str(e)}
     def extract_json(self, raw_output):
         try:
         # Split the output into lines
