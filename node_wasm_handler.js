@@ -14,8 +14,6 @@ const {
     initConsolePanicHook,
 } = kaspa;
 
-const { MongoClient } = require("mongodb");
-
 // Enable console panic hooks for debugging
 initConsolePanicHook();
 
@@ -26,6 +24,7 @@ const rpc = new RpcClient({
 });
 
 // MongoDB connection setup
+const { MongoClient } = require("mongodb");
 const mongoUri = process.env.MONGODB_URI;
 let db;
 
@@ -34,7 +33,7 @@ async function connectToDatabase() {
         const client = new MongoClient(mongoUri);
         await client.connect();
         db = client.db("kasperdb");
-        console.log("Connected to MongoDB.");
+        console.error("Connected to MongoDB."); // Use stderr for non-JSON logs
     } catch (err) {
         console.error("Error connecting to MongoDB:", err);
     }
