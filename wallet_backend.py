@@ -11,8 +11,8 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     def run_node_command(self, command, *args):
-    """Run a Node.js command and handle the response."""
-    try:
+    
+        try:
         result = subprocess.run(
             ["node", self.node_script_path, command, *args],
             capture_output=True,
@@ -40,8 +40,7 @@ class WalletBackend:
         return {"success": False, "error": str(e)}
 
     def extract_json(self, raw_output):
-    """Extract the valid JSON object from raw Node.js output."""
-    try:
+        try:
         # Split the output into lines
         lines = raw_output.splitlines()
 
@@ -58,7 +57,7 @@ class WalletBackend:
         return None
 
     def create_wallet(self):
-    """Create a new wallet."""
+   
     wallet_data = self.run_node_command("createWallet")
     if wallet_data.get("success"):
         try:
