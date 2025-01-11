@@ -204,4 +204,3 @@ async def handle_text_message(update, context):
         # Send responses
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
-    except	Exception as e:
