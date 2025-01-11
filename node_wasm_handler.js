@@ -1,27 +1,18 @@
-const WebSocket = require('websocket').w3cwebsocket;
+import WebSocket from 'websocket';
 
 // Global WebSocket shim
-globalThis.WebSocket = WebSocket;
+globalThis.WebSocket = WebSocket.w3cwebsocket;
 
-// Dynamically load kaspa.js
-const loadKaspaModule = async () => {
-    const kaspa = await import('./wasm/kaspa.js'); // Use dynamic import
-    const { RpcClient, Resolver } = kaspa.default ? kaspa.default : kaspa; // Adjust for default export
-    return { RpcClient, Resolver };
-};
+import { RpcClient, Resolver } from './wasm/kaspa.js';
 
 // Initialize RPC Client
-let rpc;
-(async () => {
-    const { RpcClient, Resolver } = await loadKaspaModule();
-    rpc = new RpcClient({
-        resolver: new Resolver(),
-        networkId: "mainnet",
-    });
-})();
+const rpc = new RpcClient({
+    resolver: new Resolver(),
+    networkId: "mainnet",
+});
 
 // Create a new wallet
-async function createWallet() {
+export async function createWallet() {
     try {
         const wallet = await rpc.wallet.create();
         return { success: true, address: wallet.address, privateKey: wallet.privateKey };
@@ -32,7 +23,7 @@ async function createWallet() {
 }
 
 // Get the balance of an address
-async function getBalance(address) {
+export async function getBalance(address) {
     try {
         const balance = await rpc.getBalanceByAddress({ address });
         return { success: true, balance: balance.balance / 1e8 }; // Convert sompi to KAS
@@ -43,7 +34,7 @@ async function getBalance(address) {
 }
 
 // Send a transaction
-async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
+export async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
     try {
         const tx = await rpc.submitTransaction({
             fromAddress,
@@ -59,7 +50,7 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
 }
 
 // Send a KRC20 token transaction
-async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKey, tokenSymbol = "KASPER") {
+export async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKey, tokenSymbol = "KASPER") {
     try {
         const tx = await rpc.submitTransaction({
             fromAddress,

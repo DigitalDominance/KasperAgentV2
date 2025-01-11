@@ -1,4 +1,5 @@
 {
+  "type": "module",
   "name": "kasper-agent",
   "version": "1.0.0",
   "description": "Node.js integration for Kasper blockchain using WASM and Telegram bot backend.",
