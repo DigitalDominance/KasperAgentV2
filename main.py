@@ -143,40 +143,41 @@ async def topup_command(update, context):
                     balance_info = data["result"][0]
                     kasper_balance = int(balance_info.get("balance", 0))
 
-                    if kasper_balance > 0:
-                        logger.info(f"Detected balance: {kasper_balance} sompi")
-                        
-                        # Execute KRC20 transaction
-                        transaction_result = wallet.send_krc20_transaction(
-                            user_id=user_id,  # Use the user_id for private key lookup
-                            from_address=wallet_address,
-                            to_address=MAIN_WALLET_ADDRESS,
-                            amount=kasper_balance
-                        )
-                        if not transaction_result["success"]:
-                            logger.error(f"Transaction error: {transaction_result['error']}")
-                            await update.message.reply_text("❌ KRC20 Transaction failed. Please try again.")
-                            return
-
-                        logger.info("KRC20 Transaction successful, sending KAS for gas fees...")
-                        
-                        # Execute KAS transaction
-                        kas_transaction_result = wallet.send_transaction(
-                            from_address=MAIN_WALLET_ADDRESS,
-                            to_address=wallet_address,
-                            amount=20 * (10 ** 8),  # 20 KAS for gas fees
-                            private_key=MAIN_WALLET_PRIVATE_KEY  # Use main wallet's private key
-                        )
-                        if not kas_transaction_result["success"]:
-                            logger.error(f"KAS Transaction error: {kas_transaction_result['error']}")
-                            await update.message.reply_text("❌ KAS Transaction for gas fees failed. Please contact support.")
-                            return
-
-                        # Add credits to the user's account
-                        credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
-                        db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
-                        await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
+                if kasper_balance > 0:
+                    logger.info(f"Detected balance: {kasper_balance} sompi")
+                    
+                    # Send KRC20 transaction from user's wallet to main wallet
+                    transaction_result = wallet.send_krc20_transaction(
+                        user_id=user_id,  # Use user_id to fetch private key
+                        from_address=wallet_address,
+                        to_address=MAIN_WALLET_ADDRESS,
+                        amount=kasper_balance,
+                        token_symbol="KASPER"
+                    )
+                    if not transaction_result["success"]:
+                        logger.error(f"Transaction error: {transaction_result['error']}")
+                        await update.message.reply_text("❌ Transaction failed. Please try again.")
                         return
+                
+                    logger.info("Transaction successful, sending KAS for gas fees...")
+                
+                    # Send KAS transaction from the main wallet to the user's wallet for gas fees
+                    gas_fee_result = wallet.send_kas_transaction(
+                        from_address=MAIN_WALLET_ADDRESS,
+                        to_address=wallet_address,
+                        amount=20 * (10 ** 8),
+                        private_key=MAIN_WALLET_PRIVATE_KEY  # Use main wallet's private key from environment
+                    )
+                    if not gas_fee_result["success"]:
+                        logger.error(f"Gas fee transaction error: {gas_fee_result['error']}")
+                        await update.message.reply_text("❌ Gas fee transaction failed. Please try again.")
+                        return
+                
+                    # Add credits to the user's account
+                    credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
+                    db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
+                    await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
+                    return
                 else:
                     logger.info("No balance detected yet.")
                 await asyncio.sleep(10)
