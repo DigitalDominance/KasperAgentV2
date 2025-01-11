@@ -1,14 +1,13 @@
-// W3C WebSocket module shim (required for Node.js, not needed in browsers or Bun)
-globalThis.WebSocket = require('websocket').w3cwebsocket;
 
-let kaspa = require('./wasm/kaspa'); // Ensure this matches your WASM folder structure
-let { RpcClient, Resolver } = kaspa;
+import { RpcClient, Resolver } from './wasm/kaspa.js';
+import WebSocket from 'websocket';
 
-kaspa.initConsolePanicHook();
+// Global WebSocket shim
+globalThis.WebSocket = WebSocket.w3cwebsocket;
 
 const rpc = new RpcClient({
     resolver: new Resolver(),
-    networkId: "mainnet",
+    networkId: 'mainnet',
 });
 
 // Create a new wallet
