@@ -120,11 +120,13 @@ async def topup_command(update, context):
         return
 
     wallet_address = user.get("wallet")
-    if not wallet_address:
+    private_key = user.get("private_key")
+    if not wallet_address or not private_key:
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}.\n\nThe top-up process will start automatically once the deposit is detected.")
+    await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}. "
+                                    "The top-up process will start automatically once the deposit is detected.")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -134,23 +136,27 @@ async def topup_command(update, context):
                 data = response.json()
 
                 if data.get("result"):
-                    balance_info = data["result"][0]  # Assuming only one result for KASPER token
-                    kasper_balance = int(balance_info.get("balance", 0))  # Convert balance to sompi (smallest unit)
+                    balance_info = data["result"][0]
+                    kasper_balance = int(balance_info.get("balance", 0))
 
                     if kasper_balance > 0:
-                        await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, user["private_key"])
-                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 * (10 ** 8), MAIN_WALLET_PRIVATE_KEY)  # Send 20 KAS in sompi
-                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, 20 * (10 ** 8), user["private_key"])
+                        # Send 20 KAS for gas fees
+                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 * (10 ** 8), MAIN_WALLET_PRIVATE_KEY)
+                        # Send KRC20 tokens back to the main wallet
+                        await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
+                        # Send remaining KAS balance back to the main wallet
+                        remaining_kas = await wallet.get_balance(wallet_address)
+                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
 
+                        # Credit user's account
                         credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
                         db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
                         await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
                         break
-                await asyncio.sleep(10)  # Poll every 10 seconds
+                await asyncio.sleep(10)
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
-
 # /balance Command Handler
 async def balance_command(update, context):
     user_id = update.effective_user.id
