@@ -16,8 +16,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
-CREDIT_CONVERSION_RATE = 200  # 1 credit = 200 KASPER
-KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
+CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
+KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://mainnet-api.kasplex.org/v1/krc20")
 MAIN_WALLET_ADDRESS = os.getenv("MAIN_WALLET_ADDRESS", "")
 MAIN_WALLET_PRIVATE_KEY = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
 
@@ -135,12 +135,12 @@ async def topup_command(update, context):
 
                 if data.get("result"):
                     balance_info = data["result"][0]  # Assuming only one result for KASPER token
-                    kasper_balance = int(balance_info.get("balance", 0))
+                    kasper_balance = int(balance_info.get("balance", 0))  # Convert balance to sompi (smallest unit)
 
                     if kasper_balance > 0:
                         await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, user["private_key"])
-                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20, MAIN_WALLET_PRIVATE_KEY)
-                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, 20, user["private_key"])
+                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 * (10 ** 8), MAIN_WALLET_PRIVATE_KEY)  # Send 20 KAS in sompi
+                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, 20 * (10 ** 8), user["private_key"])
 
                         credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
                         db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
@@ -217,9 +217,9 @@ def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("topup", topup_command))
-    application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(CommandHandler("topup", topup_command)) 
+    application.add_handler(CommandHandler("balance", balance_command)) 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    logger.info("🚀 Starting Kasper AI Bot...")
-    application.run
+logger.info("🚀 Starting Kasper AI Bot...")
+application.run_polling()
