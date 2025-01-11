@@ -109,43 +109,50 @@ async def generate_openai_response(user_text: str) -> str:
             logger.error(f"Error in OpenAI Chat Completion: {e}")
             return "❌ An error occurred while generating a response."
 
-# Background task to monitor balances
-async def monitor_balances():
-    while True:
-        try:
-            users = db.users.find()
-            tasks = []
+# /topup Command Handler
+async def topup_command(update, context):
+    user_id = update.effective_user.id
+    user = db.get_user(user_id)
 
-            for user in users:
-                wallet_address = user.get("wallet")
-                private_key = user.get("private_key")
-                if wallet_address and private_key:
-                    tasks.append(process_user_balance(wallet_address, private_key, user["user_id"]))
+    if not user:
+        await update.message.reply_text("❌ You need to /start first to create a wallet.")
+        return
 
-            await asyncio.gather(*tasks)
-        except Exception as e:
-            logger.error(f"Error in monitor_balances: {e}")
-        finally:
-            await asyncio.sleep(30)
+    wallet_address = user.get("wallet")
+    if not wallet_address:
+        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
+        return
 
-async def process_user_balance(wallet_address, private_key, user_id):
     try:
-        kasper_balance = await wallet.get_kasper_balance(wallet_address)
-        if kasper_balance > 0:
-            kas_balance = await wallet.get_balance(wallet_address)
-            if kas_balance < 20:
-                await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 - kas_balance, MAIN_WALLET_PRIVATE_KEY)
-            await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
-            remaining_kas = await wallet.get_balance(wallet_address)
-            if remaining_kas > 0:
-                await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
-            credits_to_add = int(kasper_balance // CREDIT_CONVERSION_RATE)
-            if credits_to_add > 0:
-                user = db.get_user(user_id)
-                if user:
-                    db.update_user_credits(user_id, user["credits"] + credits_to_add)
+        # Fetch transactions from Kasplex API
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"https://api.kasplex.org/v1/transactions/{wallet_address}")
+            response.raise_for_status()
+            transactions = response.json()
+
+        # Process transactions for credits
+        for tx in transactions.get("transactions", []):
+            amount = int(tx.get("amount", 0))
+            if amount >= CREDIT_CONVERSION_RATE:
+                credits_to_add = amount // CREDIT_CONVERSION_RATE
+                db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
+                await update.message.reply_text(f"✅ Added {credits_to_add} credits to your account!")
+
     except Exception as e:
-        logger.error(f"Error processing balance for user {user_id}: {e}")
+        logger.error(f"Error in topup_command for user {user_id}: {e}")
+        await update.message.reply_text("❌ Failed to process your top-up. Please try again later.")
+
+# /balance Command Handler
+async def balance_command(update, context):
+    user_id = update.effective_user.id
+    user = db.get_user(user_id)
+
+    if not user:
+        await update.message.reply_text("❌ You need to /start first to create a wallet.")
+        return
+
+    total_credits = user.get("credits", 0)
+    await update.message.reply_text(f"👻 You have {total_credits} credits available.")
 
 # Command Handlers
 async def start_command(update, context):
@@ -153,33 +160,29 @@ async def start_command(update, context):
     try:
         user = db.get_user(user_id)
         if not user:
-            # If the user doesn't exist, create a wallet and add them to the database
             wallet_data = wallet.create_wallet()
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receiving_address")
                 private_key = wallet_data.get("private_key")
                 if not wallet_address or not private_key:
                     raise ValueError("Wallet data is incomplete")
-                
-                # Add user to the database with 3 free credits
+
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
                 await update.message.reply_text(
-                    f"👻 Hey Fam! Its Agent Kasper! Send KASPER to {wallet_address} for credits (200 KASPER = 1 Credit). "
+                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. "
                     f"You have 3 free credits and 3 total credits."
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
-            # If the user exists, show their current total and free credits
             total_credits = user.get("credits", 0)
             await update.message.reply_text(
-                f"👻 Hey Fam! Its Agent Kasper! You have {total_credits} credits in total. "
-                f"Send KASPER to: {user['wallet']} for credits (200 KASPER = 1 Credit)."
+                f"👻 Welcome back! You have {total_credits} credits in total. "
+                f"Send KASPER to: {user['wallet']} for more credits (200 KASPER = 1 Credit)."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-
 
 async def handle_text_message(update, context):
     user_id = update.effective_user.id
@@ -207,10 +210,9 @@ def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(monitor_balances())
 
     logger.info("🚀 Starting Kasper AI Bot...")
     application.run_polling()
