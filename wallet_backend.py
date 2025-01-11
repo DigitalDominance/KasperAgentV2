@@ -27,11 +27,14 @@ class WalletBackend:
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Parse JSON output if available
+            # Extract JSON if mixed with logs
             try:
-                # Extract JSON if mixed with logs
-                json_output = stdout[stdout.find("{"):]
-                return json.loads(json_output)
+                json_start = stdout.find("{")
+                if json_start != -1:
+                    json_output = stdout[json_start:]
+                    return json.loads(json_output)
+                else:
+                    raise ValueError("No JSON found in Node.js output")
             except (json.JSONDecodeError, ValueError):
                 logger.error(f"Invalid JSON output: {stdout}")
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
