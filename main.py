@@ -125,7 +125,7 @@ async def topup_command(update, context):
         return
 
     await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}.\n\nThe top-up process will start automatically once the deposit is detected.")
-    
+
     try:
         async with httpx.AsyncClient() as client:
             while True:
@@ -217,9 +217,13 @@ def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("topup", topup_command)) 
-    application.add_handler(CommandHandler("balance", balance_command)) 
+    application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-logger.info("🚀 Starting Kasper AI Bot...")
-application.run_polling()
+    logger.info("🚀 Starting Kasper AI Bot...")
+    application
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
