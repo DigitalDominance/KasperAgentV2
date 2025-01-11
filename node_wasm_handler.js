@@ -1,7 +1,12 @@
 
-import kaspa from './wasm/kaspa.js';
+(async () => {
+    const kaspa = await import('./wasm/kaspa.js');
+    const { RpcClient, Resolver } = kaspa;
 
-const { RpcClient, Resolver } = kaspa;
+    const rpc = new RpcClient({
+        resolver: new Resolver(),
+        networkId: "mainnet",
+    });
 
 import WebSocket from 'websocket';
 
