@@ -39,23 +39,24 @@ class WalletBackend:
             return {"success": False, "error": str(e)}
 
     def extract_json(self, raw_output):
-        """Extract the valid JSON object from raw Node.js output."""
-        try:
-            # Split the raw output into lines and parse each line
-            lines = raw_output.splitlines()
-            for line in lines:
-                line = line.strip()
-                if line.startswith("{") and line.endswith("}"):
-                    try:
-                        return json.loads(line)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"JSON decoding error: {e}")
-                        logger.error(f"Problematic line: {line}")
+    """Extract the valid JSON object from raw Node.js output."""
+    try:
+        # Identify the JSON block within the output
+        start_idx = raw_output.find("{")
+        end_idx = raw_output.rfind("}")
+        
+        if start_idx != -1 and end_idx != -1:
+            json_string = raw_output[start_idx:end_idx + 1]
+            return json.loads(json_string)
+        else:
             logger.error("No valid JSON object found in the Node.js output.")
+            logger.error(f"Raw output causing error: {raw_output}")
             return None
-        except Exception as e:
-            logger.error(f"Unexpected error during JSON extraction: {e}")
-            return None
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decoding error: {e}")
+        logger.error(f"Raw output causing error: {raw_output}")
+        return None
+
 
     def create_wallet(self):
         """Create a new wallet."""
