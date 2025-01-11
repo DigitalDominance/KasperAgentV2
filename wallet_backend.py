@@ -46,12 +46,12 @@ class WalletBackend:
             end_idx = raw_output.rfind("}")
         
             if start_idx != -1 and end_idx != -1:
-            json_string = raw_output[start_idx:end_idx + 1]
-            return json.loads(json_string)
-        else:
-            logger.error("No valid JSON object found in the Node.js output.")
-            logger.error(f"Raw output causing error: {raw_output}")
-            return None
+                json_string = raw_output[start_idx:end_idx + 1]
+                return json.loads(json_string)
+            else:
+                logger.error("No valid JSON object found in the Node.js output.")
+                logger.error(f"Raw output causing error: {raw_output}")
+                return None
         except json.JSONDecodeError as e:
             logger.error(f"JSON decoding error: {e}")
             logger.error(f"Raw output causing error: {raw_output}")
