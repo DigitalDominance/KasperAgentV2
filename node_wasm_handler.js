@@ -30,9 +30,8 @@ async function connectToDatabase() {
         const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
         await client.connect();
         db = client.db("kasperdb");
-        console.debug("✅ MongoDB connection established"); // Debug log, not stdout
     } catch (err) {
-        console.error("❌ Failed to connect to MongoDB:", err.message);
+        console.error(JSON.stringify({ success: false, error: `Failed to connect to MongoDB: ${err.message}` }));
         process.exit(1);
     }
 }
@@ -59,35 +58,6 @@ async function getUserPrivateKey(user_id) {
     }
 }
 
-// Utility to create a new wallet
-async function createWallet() {
-    try {
-        const mnemonic = Mnemonic.random();
-        const seed = mnemonic.toSeed();
-        const xPrv = new XPrv(seed);
-
-        const receivePath = "m/44'/111111'/0'/0/0";
-        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
-        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
-
-        const changePath = "m/44'/111111'/0'/1/0";
-        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
-        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
-
-        console.log(
-            JSON.stringify({
-                success: true,
-                mnemonic: mnemonic.phrase,
-                receivingAddress: receiveAddress.toString(),
-                changeAddress: changeAddress.toString(),
-                xPrv: xPrv.intoString("xprv"),
-            })
-        );
-    } catch (err) {
-        console.error(JSON.stringify({ success: false, error: err.message }));
-    }
-}
-
 // Send a KAS transaction
 async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     try {
@@ -105,7 +75,7 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
         const result = await rpc.submitTransaction({ transaction });
         console.log(JSON.stringify({ success: true, txid: result.transactionId }));
     } catch (err) {
-        console.log(JSON.stringify({ success: false, error: err.message })); // Send clean JSON error
+        console.log(JSON.stringify({ success: false, error: err.message }));
     } finally {
         await rpc.disconnect();
     }
@@ -130,7 +100,7 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
 
         console.log(JSON.stringify({ success: true, txid: result.transactionId }));
     } catch (err) {
-        console.log(JSON.stringify({ success: false, error: err.message })); // Send clean JSON error
+        console.log(JSON.stringify({ success: false, error: err.message }));
     } finally {
         await rpc.disconnect();
     }
@@ -145,9 +115,6 @@ if (require.main === module) {
             await connectToDatabase();
 
             switch (command) {
-                case "createWallet":
-                    await createWallet();
-                    break;
                 case "sendTransaction":
                     if (args.length < 4) throw new Error("Invalid arguments for sendTransaction");
                     await sendTransaction(parseInt(args[0]), args[1], args[2], args[3]);
@@ -160,7 +127,7 @@ if (require.main === module) {
                     console.log(JSON.stringify({ success: false, error: "Invalid command" }));
             }
         } catch (e) {
-            console.log(JSON.stringify({ success: false, error: e.message })); // Send clean JSON error
+            console.log(JSON.stringify({ success: false, error: e.message }));
         }
     })();
 }
