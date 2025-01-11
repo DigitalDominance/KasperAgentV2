@@ -8,21 +8,30 @@ class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
 
-    def run_node_command(self, command, *args):
-        """Run a Node.js script command and return the JSON result."""
+      def run_node_command(self, command, *args):
         try:
             result = subprocess.run(
                 ["node", self.node_script_path, command, *args],
                 capture_output=True,
                 text=True,
             )
-            if result.returncode == 0:
-                output = result.stdout.strip()
-                logger.debug(f"Node.js output for {command}: {output}")
-                return json.loads(output)
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
+
+            if stdout:
+                logger.debug(f"Node.js stdout for {command}: {stdout}")
+            if stderr:
+                logger.error(f"Node.js stderr for {command}: {stderr}")
+
+            if result.returncode == 0 and stdout:
+                return json.loads(stdout)
+            elif result.returncode == 0 and not stdout:
+                return {"success": False, "error": "Empty response from Node.js script"}
             else:
-                logger.error(f"Node.js error for {command}: {result.stderr.strip()}")
-                return {"success": False, "error": result.stderr.strip()}
+                return {"success": False, "error": stderr}
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parsing error for {command}: {e}")
+            return {"success": False, "error": "Invalid JSON response"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
