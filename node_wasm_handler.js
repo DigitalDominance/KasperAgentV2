@@ -13,10 +13,6 @@ import WebSocket from 'websocket';
 // Global WebSocket shim
 globalThis.WebSocket = WebSocket.w3cwebsocket;
 
-const rpc = new RpcClient({
-    resolver: new Resolver(),
-    networkId: 'mainnet',
-});
 
 // Create a new wallet
 async function createWallet() {
