@@ -1,0 +1,16 @@
+
+{
+  "name": "kasper-wasm",
+  "version": "1.0.0",
+  "description": "WASM integration for Kaspa blockchain in Node.js",
+  "main": "wasm_handler.js",
+  "scripts": {
+    "start": "node wasm_handler.js"
+  },
+  "dependencies": {
+    "kaspa-wasm": "^1.0.0",
+    "websocket": "^1.0.34"
+  },
+  "author": "",
+  "license": "ISC"
+}
