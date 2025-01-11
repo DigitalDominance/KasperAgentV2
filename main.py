@@ -120,18 +120,21 @@ async def topup_command(update, context):
         return
 
     wallet_address = user.get("wallet")
-    private_key = user.get("private_key")
-    if not wallet_address or not private_key:
+    if not wallet_address:
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}. "
-                                    "The top-up process will start automatically once the deposit is detected.")
+    await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}.\n\nThe top-up process will start automatically once the deposit is detected.")
+
+    start_time = datetime.utcnow()
+    max_wait_time = timedelta(minutes=10)  # Timeout after 10 minutes
 
     try:
         async with httpx.AsyncClient() as client:
-            while True:
+            while datetime.utcnow() - start_time < max_wait_time:
+                logger.info("Polling for balance...")
                 response = await client.get(f"{KRC20_API_BASE_URL}/address/{wallet_address}/token/KASPER")
+                logger.info(f"Response received: {response.status_code}")
                 response.raise_for_status()
                 data = response.json()
 
@@ -140,23 +143,41 @@ async def topup_command(update, context):
                     kasper_balance = int(balance_info.get("balance", 0))
 
                     if kasper_balance > 0:
-                        # Send 20 KAS for gas fees
-                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 * (10 ** 8), MAIN_WALLET_PRIVATE_KEY)
-                        # Send KRC20 tokens back to the main wallet
-                        await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
-                        # Send remaining KAS balance back to the main wallet
-                        remaining_kas = await wallet.get_balance(wallet_address)
-                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
+                        logger.info(f"Detected balance: {kasper_balance} sompi")
+                        # Process transactions
+                        transaction_result = await wallet.send_krc20_transaction(
+                            from_address=wallet_address,
+                            to_address=MAIN_WALLET_ADDRESS,
+                            amount=kasper_balance,
+                            private_key=user["private_key"]
+                        )
+                        if not transaction_result["success"]:
+                            logger.error(f"Transaction error: {transaction_result['error']}")
+                            await update.message.reply_text("❌ Transaction failed. Please try again.")
+                            return
 
-                        # Credit user's account
+                        logger.info("Transaction successful, sending KAS for gas fees...")
+                        # Send 20 KAS for gas fees
+                        await wallet.send_transaction(
+                            from_address=MAIN_WALLET_ADDRESS,
+                            to_address=wallet_address,
+                            amount=20 * (10 ** 8),
+                            private_key=MAIN_WALLET_PRIVATE_KEY
+                        )
+
                         credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
                         db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
                         await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
-                        break
+                        return
+                else:
+                    logger.info("No balance detected yet.")
                 await asyncio.sleep(10)
+
+        await update.message.reply_text("⏳ Top-up process timed out. Please try again later.")
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+
 # /balance Command Handler
 async def balance_command(update, context):
     user_id = update.effective_user.id
