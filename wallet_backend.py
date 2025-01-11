@@ -28,15 +28,16 @@ class WalletBackend:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
             # Handle response
-            if result.returncode == 0 and stdout:
-                return json.loads(stdout)  # Parse JSON output
-            elif result.returncode == 0 and not stdout:
-                return {"success": False, "error": "Empty response from Node.js script"}
+            if result.returncode == 0:
+                try:
+                    parsed_data = json.loads(stdout)
+                    logger.info(f"Parsed JSON response for {command}: {parsed_data}")
+                    return parsed_data
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON parsing error for {command}: {e}")
+                    return {"success": False, "error": "Invalid JSON response"}
             else:
-                return {"success": False, "error": stderr}
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error for {command}: {e}")
-            return {"success": False, "error": "Invalid JSON response"}
+                return {"success": False, "error": stderr or "Unknown error occurred"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
