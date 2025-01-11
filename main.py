@@ -16,11 +16,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
+CREDIT_CONVERSION_RATE = 200  # 1 credit = 200 KASPER
+KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
 MAIN_WALLET_ADDRESS = os.getenv("MAIN_WALLET_ADDRESS", "")
 MAIN_WALLET_PRIVATE_KEY = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
-CREDIT_CONVERSION_RATE = 200  # 1 credit = 200 KASPER
-KASPER_DECIMALS = 10**8  # Adjusting for KASPER's smallest unit (1 KASPER = 10^8)
-KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://mainnet-api.kasplex.org/v1/krc20")
 
 # Logging setup
 logging.basicConfig(
@@ -125,44 +124,32 @@ async def topup_command(update, context):
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    await update.message.reply_text(f"👻 Deposit KASPER to your wallet address: {wallet_address}.")
-
+    await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}.\n\nThe top-up process will start automatically once the deposit is detected.")
+    
     try:
-        # Fetch KRC20 KASPER balance
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{KRC20_API_BASE_URL}/address/{wallet_address}/token/KASPER")
-            response.raise_for_status()
-            data = response.json()
+            while True:
+                response = await client.get(f"{KRC20_API_BASE_URL}/address/{wallet_address}/token/KASPER")
+                response.raise_for_status()
+                data = response.json()
 
-        if data.get("result"):
-            balance_info = data["result"][0]  # Assuming only one result for KASPER token
-            kasper_balance = int(balance_info.get("balance", 0))
+                if data.get("result"):
+                    balance_info = data["result"][0]  # Assuming only one result for KASPER token
+                    kasper_balance = int(balance_info.get("balance", 0))
 
-            if kasper_balance > 0:
-                # Step 1: Send 20 KAS from main wallet to user wallet
-                await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20, MAIN_WALLET_PRIVATE_KEY)
+                    if kasper_balance > 0:
+                        await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, user["private_key"])
+                        await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20, MAIN_WALLET_PRIVATE_KEY)
+                        await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, 20, user["private_key"])
 
-                # Step 2: Transfer KASPER from user wallet to main wallet
-                private_key = user.get("private_key")
-                await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance / KASPER_DECIMALS, private_key)
-
-                # Step 3: Transfer remaining KAS back to main wallet
-                remaining_kas = await wallet.get_balance(wallet_address)["balance"]
-                if remaining_kas > 0:
-                    await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
-
-                # Step 4: Credit the user
-                credits_to_add = kasper_balance // (CREDIT_CONVERSION_RATE * KASPER_DECIMALS)
-                db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
-
-                await update.message.reply_text(f"✅ Spook-tacular! You’ve gained {credits_to_add} credits. Thanks for supporting Kasper AI!")
-            else:
-                await update.message.reply_text(f"⚠️ Your balance is too low for top-up.")
-        else:
-            await update.message.reply_text("⚠️ Unable to fetch balance. Please try again later.")
+                        credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
+                        db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
+                        await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
+                        break
+                await asyncio.sleep(10)  # Poll every 10 seconds
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ Failed to process your top-up. Please try again later.")
+        await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
 
 # /balance Command Handler
 async def balance_command(update, context):
@@ -209,4 +196,30 @@ async def handle_text_message(update, context):
     user_text = update.message.text.strip()
     user = db.get_user(user_id)
 
-    if not user or
+    if not user or user.get("credits", 0) <= 0:
+        await update.message.reply_text("❌ You have no credits remaining.")
+        return
+
+    try:
+        await update.message.reply_text("👻 KASPER is thinking...")
+        ai_response = await generate_openai_response(user_text)
+        mp3_audio = await elevenlabs_tts(ai_response)
+        ogg_audio = convert_mp3_to_ogg(mp3_audio)
+        db.update_user_credits(user_id, user["credits"] - 1)
+        await update.message.reply_text(ai_response)
+        await update.message.reply_voice(voice=ogg_audio)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await update.message.reply_text("❌ An error occurred.")
+
+# Main function
+def main():
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+
+    logger.info("🚀 Starting Kasper AI Bot...")
+    application.run
