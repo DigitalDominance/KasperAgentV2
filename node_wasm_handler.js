@@ -1,5 +1,8 @@
 
-import { RpcClient, Resolver } from './wasm/kaspa.js';
+import kaspa from './wasm/kaspa.js';
+
+const { RpcClient, Resolver } = kaspa;
+
 import WebSocket from 'websocket';
 
 // Global WebSocket shim
