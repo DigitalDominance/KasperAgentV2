@@ -2,7 +2,7 @@
 import logging
 import asyncio
 from typing import Optional
-from kaspa.wasm import RpcClient, Resolver
+from wasm import RpcClient, Resolver
 
 
 class WalletBackend:
