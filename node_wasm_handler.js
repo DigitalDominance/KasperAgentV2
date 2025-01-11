@@ -1,20 +1,26 @@
-import WebSocket from 'websocket';
+// Import the required components from the WASM library
+let {
+    RpcClient,
+    Encoding,
+    initConsolePanicHook
+} = require('./wasm/kaspa');
 
-// Global WebSocket shim
-globalThis.WebSocket = WebSocket.w3cwebsocket;
+// Enable console panic hooks to log detailed errors from WASM
+initConsolePanicHook();
 
-import { RpcClient, Resolver } from './wasm/kaspa.js';
-
-// Initialize RPC Client
+// Configure the RPC client
 const rpc = new RpcClient({
-    resolver: new Resolver(),
-    networkId: "mainnet",
+    url: "127.0.0.1", // Replace with the appropriate Kaspa node URL
+    encoding: Encoding.Borsh,
+    network: "mainnet" // Specify the network
 });
 
 // Create a new wallet
-export async function createWallet() {
+async function createWallet() {
     try {
+        await rpc.connect();
         const wallet = await rpc.wallet.create();
+        await rpc.disconnect();
         return { success: true, address: wallet.address, privateKey: wallet.privateKey };
     } catch (err) {
         console.error("Error creating wallet:", err.message);
@@ -23,9 +29,11 @@ export async function createWallet() {
 }
 
 // Get the balance of an address
-export async function getBalance(address) {
+async function getBalance(address) {
     try {
+        await rpc.connect();
         const balance = await rpc.getBalanceByAddress({ address });
+        await rpc.disconnect();
         return { success: true, balance: balance.balance / 1e8 }; // Convert sompi to KAS
     } catch (err) {
         console.error("Error fetching balance:", err.message);
@@ -34,14 +42,16 @@ export async function getBalance(address) {
 }
 
 // Send a transaction
-export async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
+async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
     try {
+        await rpc.connect();
         const tx = await rpc.submitTransaction({
             fromAddress,
             toAddress,
             amount: parseInt(amount * 1e8, 10), // Convert KAS to sompi
             privateKey,
         });
+        await rpc.disconnect();
         return { success: true, transactionId: tx.transactionId };
     } catch (err) {
         console.error("Error sending transaction:", err.message);
@@ -50,8 +60,9 @@ export async function sendTransaction(fromAddress, toAddress, amount, privateKey
 }
 
 // Send a KRC20 token transaction
-export async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKey, tokenSymbol = "KASPER") {
+async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKey, tokenSymbol = "KASPER") {
     try {
+        await rpc.connect();
         const tx = await rpc.submitTransaction({
             fromAddress,
             toAddress,
@@ -59,6 +70,7 @@ export async function sendKRC20Transaction(fromAddress, toAddress, amount, priva
             privateKey,
             tokenSymbol,
         });
+        await rpc.disconnect();
         return { success: true, transactionId: tx.transactionId };
     } catch (err) {
         console.error(`Error sending ${tokenSymbol} transaction:`, err.message);
