@@ -28,6 +28,7 @@ async function createWallet() {
     try {
         console.log("Creating wallet...");
 
+        // Generate the mnemonic and keys
         const mnemonic = Mnemonic.random();
         console.log("Generated Mnemonic:", mnemonic.phrase);
 
@@ -45,18 +46,36 @@ async function createWallet() {
         console.log("Receiving Address:", receiveAddress);
         console.log("Change Address:", changeAddress);
 
-        return {
+        // Explicitly output the JSON result as the last line
+        const result = {
             success: true,
             mnemonic: mnemonic.phrase,
-            receivingAddress: receiveAddress,
-            changeAddress,
+            receivingAddress: {
+                version: receiveAddress.version,
+                prefix: receiveAddress.prefix,
+                payload: receiveAddress.payload,
+            },
+            changeAddress: {
+                version: changeAddress.version,
+                prefix: changeAddress.prefix,
+                payload: changeAddress.payload,
+            },
             xPrv: xPrv.intoString("xprv"),
         };
+
+        // Ensure this is the final output to stdout
+        console.log(JSON.stringify(result));
+        return result;
     } catch (err) {
         console.error("Error creating wallet:", err);
-        return { success: false, error: err.message };
+
+        // Ensure errors are returned as JSON
+        const errorResult = { success: false, error: err.message };
+        console.log(JSON.stringify(errorResult));
+        return errorResult;
     }
 }
+
 
 // Get balance for an address
 async function getBalance(address) {
