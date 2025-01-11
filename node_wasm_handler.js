@@ -1,5 +1,7 @@
 const { RpcClient, Encoding, initConsolePanicHook } = require('./wasm/kaspa');
 
+globalThis.WebSocket = require('websocket').w3cwebsocket;
+
 // Enable console panic hooks
 initConsolePanicHook();
 
