@@ -1,13 +1,12 @@
-// Import the required components from the WASM library
-let {
-    RpcClient,
-    Encoding,
-    initConsolePanicHook
-} = require('./wasm/kaspa');
+const { RpcClient, Encoding, initConsolePanicHook } = require('./wasm/kaspa');
 
-// Enable console panic hooks to log detailed errors from WASM
+// Enable console panic hooks
 initConsolePanicHook();
 
+const rpc = new RpcClient({
+    encoding: Encoding.Borsh,
+    network: "mainnet",
+});
 // Configure the RPC client
 const rpc = new RpcClient({
     url: "127.0.0.1", // Replace with the appropriate Kaspa node URL
