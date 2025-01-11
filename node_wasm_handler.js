@@ -1,10 +1,7 @@
-const WebSocket = require('websocket').w3cwebsocket;
+import WebSocket from 'websocket';
+import { RpcClient, Resolver } from './wasm/kaspa.js';
 
-const kaspa = require('./wasm/kaspa.js');
-const { RpcClient, Resolver } = kaspa;
-
-// Global WebSocket shim
-globalThis.WebSocket = WebSocket;
+globalThis.WebSocket = WebSocket.w3cwebsocket;
 
 const rpc = new RpcClient({
     resolver: new Resolver(),
