@@ -11,57 +11,76 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     def run_node_command(self, command, *args):
-        """Run a Node.js command and handle the response."""
-        try:
-            result = subprocess.run(
-                ["node", self.node_script_path, command, *args],
-                capture_output=True,
-                text=True,
-            )
-            stdout = result.stdout.strip()
-            stderr = result.stderr.strip()
+    """Run a Node.js command and handle the response."""
+    try:
+        result = subprocess.run(
+            ["node", self.node_script_path, command, *args],
+            capture_output=True,
+            text=True,
+        )
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
 
-            # Log stdout and stderr for debugging
-            if stdout:
-                logger.info(f"Node.js stdout for {command}: {stdout}")
-            if stderr:
-                logger.error(f"Node.js stderr for {command}: {stderr}")
+        # Log stdout and stderr for debugging
+        if stdout:
+            logger.info(f"Node.js stdout for {command}: {stdout}")
+        if stderr:
+            logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Attempt to parse JSON directly from stdout
-            try:
-                json_data = json.loads(stdout)
-                return json_data
-            except json.JSONDecodeError:
-                logger.error("Failed to decode JSON. Raw output:")
-                logger.error(stdout)
-                return {"success": False, "error": "Invalid JSON in Node.js output"}
-        except Exception as e:
-            logger.error(f"Exception when running {command}: {e}")
-            return {"success": False, "error": str(e)}
+        # Extract JSON from stdout
+        json_data = self.extract_json(stdout)
+        if json_data:
+            return json_data
+        else:
+            logger.error("Failed to extract JSON. Raw output:")
+            logger.error(stdout)
+            return {"success": False, "error": "Failed to extract JSON from Node.js output"}
+    except Exception as e:
+        logger.error(f"Exception when running {command}: {e}")
+        return {"success": False, "error": str(e)}
+
+    def extract_json(self, raw_output):
+    """Extract the valid JSON object from raw Node.js output."""
+    try:
+        # Split the output into lines
+        lines = raw_output.splitlines()
+
+        # Iterate through lines to find JSON
+        for line in lines:
+            line = line.strip()
+            if line.startswith("{") and line.endswith("}"):
+                return json.loads(line)  # Parse the JSON line
+        logger.error("No valid JSON object found in the Node.js output.")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decoding error: {e}")
+        logger.error(f"Raw output causing error: {raw_output}")
+        return None
 
     def create_wallet(self):
-        """Create a new wallet."""
-        wallet_data = self.run_node_command("createWallet")
-        if wallet_data.get("success"):
-            try:
-                # Construct the full receiving address
-                receiving_address = (
-                    f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
-                )
-                # Return relevant data
-                parsed_data = {
-                    "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": receiving_address,
-                    "private_key": wallet_data["xPrv"],
-                }
-                logger.info(f"Wallet created successfully: {parsed_data}")
-                return parsed_data
-            except KeyError as e:
-                logger.error(f"Missing key in wallet data: {e}")
-                return {"success": False, "error": "Malformed wallet data"}
-        else:
-            logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
-            return {"success": False, "error": wallet_data.get('error')}
+    """Create a new wallet."""
+    wallet_data = self.run_node_command("createWallet")
+    if wallet_data.get("success"):
+        try:
+            # Combine prefix and payload for the receiving address
+            receiving_address_obj = wallet_data["receivingAddress"]
+            receiving_address = f"{receiving_address_obj['prefix']}:{receiving_address_obj['payload']}"
+            
+            # Prepare the final output
+            parsed_data = {
+                "mnemonic": wallet_data["mnemonic"],
+                "receiving_address": receiving_address,
+                "private_key": wallet_data["xPrv"],
+            }
+            logger.info(f"Wallet created successfully: {parsed_data}")
+            return parsed_data
+        except KeyError as e:
+            logger.error(f"Missing key in wallet data: {e}")
+            return {"success": False, "error": "Malformed wallet data"}
+    else:
+        logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
+        return {"success": False, "error": wallet_data.get('error')}
+
 
     def get_balance(self, address):
         """Get the balance of a specific address."""
