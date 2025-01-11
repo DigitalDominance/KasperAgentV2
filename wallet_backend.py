@@ -37,22 +37,6 @@ class WalletBackend:
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
-    def extract_json(self, raw_output):
-        try:
-        # Split the output into lines
-        lines = raw_output.splitlines()
-
-        # Iterate through lines to find JSON
-        for line in lines:
-            line = line.strip()
-            if line.startswith("{") and line.endswith("}"):
-                return json.loads(line)  # Parse the JSON line
-        logger.error("No valid JSON object found in the Node.js output.")
-        return None
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON decoding error: {e}")
-        logger.error(f"Raw output causing error: {raw_output}")
-        return None
 
     def create_wallet(self):
    
