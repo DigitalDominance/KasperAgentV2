@@ -9,8 +9,8 @@ const {
     XPrv,
     PrivateKey,
     NetworkType,
-    createTransactions,
-    kaspaToSompi,
+    createTransaction,
+    signTransaction,
 } = kaspa;
 
 // MongoDB connection setup
@@ -33,7 +33,7 @@ async function connectToDatabase() {
         console.log("✅ MongoDB connection established");
     } catch (err) {
         console.error("❌ Failed to connect to MongoDB:", err.message);
-        process.exit(1); // Exit the process if database connection fails
+        process.exit(1);
     }
 }
 
@@ -112,25 +112,19 @@ async function getBalance(address) {
 async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     try {
         const privateKeyStr = await getUserPrivateKey(user_id);
-        const privateKey = PrivateKey.fromString(privateKeyStr);
+        const privateKey = new PrivateKey(privateKeyStr);
+        const keypair = privateKey.toKeypair();
 
         await rpc.connect();
-        const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!entries.length) throw new Error("No UTXOs available");
+        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
+        if (!utxos.length) throw new Error("No UTXOs available");
 
-        const { transactions } = await createTransactions({
-            entries,
-            outputs: [{ address: toAddress, amount: BigInt(amount) }],
-            priorityFee: 0n,
-            changeAddress: fromAddress,
-        });
+        const outputs = [{ address: toAddress, amount: BigInt(amount) }];
+        const transaction = createTransaction(utxos, outputs, 0n, "", 1);
+        signTransaction(transaction, [privateKey]);
 
-        for (const pending of transactions) {
-            await pending.sign([privateKey]);
-            const txid = await pending.submit(rpc);
-            console.log(JSON.stringify({ success: true, txid }));
-        }
-
+        const result = await rpc.submitTransaction({ transaction });
+        console.log(JSON.stringify({ success: true, txid: result.transactionId }));
         await rpc.disconnect();
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
@@ -141,27 +135,20 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
 async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
         const privateKeyStr = await getUserPrivateKey(user_id);
-        const privateKey = PrivateKey.fromString(privateKeyStr);
+        const privateKey = new PrivateKey(privateKeyStr);
 
         await rpc.connect();
-        const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!entries.length) throw new Error("No UTXOs available");
+        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
+        if (!utxos.length) throw new Error("No UTXOs available");
 
         const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`;
-        const { transactions } = await createTransactions({
-            entries,
-            outputs: [{ address: toAddress, amount: 0n }],
-            priorityFee: 0n,
-            payload,
-            changeAddress: fromAddress,
-        });
+        const outputs = [{ address: toAddress, amount: 0n }];
+        const transaction = createTransaction(utxos, outputs, 0n, payload, 1);
 
-        for (const pending of transactions) {
-            await pending.sign([privateKey]);
-            const txid = await pending.submit(rpc);
-            console.log(JSON.stringify({ success: true, txid }));
-        }
+        signTransaction(transaction, [privateKey]);
+        const result = await rpc.submitTransaction({ transaction });
 
+        console.log(JSON.stringify({ success: true, txid: result.transactionId }));
         await rpc.disconnect();
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
