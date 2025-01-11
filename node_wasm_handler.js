@@ -49,6 +49,7 @@ async function createWallet() {
             success: true,
             mnemonic: mnemonic.phrase,
             receivingAddress: receiveAddress,
+            changeAddress,
             xPrv: xPrv.intoString("xprv"),
         };
     } catch (err) {
