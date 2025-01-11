@@ -17,7 +17,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
-KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://mainnet-api.kasplex.org/v1/krc20")
+KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
 MAIN_WALLET_ADDRESS = os.getenv("MAIN_WALLET_ADDRESS", "")
 MAIN_WALLET_PRIVATE_KEY = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
 
