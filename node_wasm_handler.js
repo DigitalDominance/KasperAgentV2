@@ -35,18 +35,34 @@ async function connectToDatabase() {
     }
 }
 
-// Retrieve user's private key from the database
 async function getUserPrivateKey(user_id) {
     try {
-        const user = await db.collection("users").findOne({ user_id: parseInt(user_id) }); // Ensure field name matches database
-        if (!user || !user.private_key) {
-            throw new Error(`Private key not found for user_id: ${user_id}`);
+        // Validate that user_id is an integer
+        if (typeof user_id !== "number") {
+            throw new Error("user_id must be an integer.");
         }
+
+        // Query the database for the user with the given user_id
+        const user = await db.collection("users").findOne({ user_id });
+
+        // Check if the user exists in the database
+        if (!user) {
+            throw new Error(`No user found with user_id: ${user_id}`);
+        }
+
+        // Check if the private_key field exists and is a string
+        if (!user.private_key || typeof user.private_key !== "string") {
+            throw new Error(`Private key is missing or invalid for user_id: ${user_id}`);
+        }
+
+        // Return the private key
         return user.private_key;
     } catch (err) {
-        throw new Error(`Error retrieving private key: ${err.message}`);
+        // Handle errors with detailed messaging
+        throw new Error(`Error retrieving private key for user_id ${user_id}: ${err.message}`);
     }
 }
+
 
 // Utility to create a new wallet
 async function createWallet() {
