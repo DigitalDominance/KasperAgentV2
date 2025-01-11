@@ -92,4 +92,3 @@ if (require.main === module) {
             console.error(JSON.stringify({ success: false, error: e.message }));
         }
     })();
-}
