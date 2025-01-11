@@ -6,7 +6,6 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-
 class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
@@ -28,46 +27,28 @@ class WalletBackend:
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Extract JSON response
-            json_data = self.extract_json(stdout)
-            if json_data:
+            # Attempt to parse JSON directly from stdout
+            try:
+                json_data = json.loads(stdout)
                 return json_data
-            else:
+            except json.JSONDecodeError:
+                logger.error("Failed to decode JSON. Raw output:")
+                logger.error(stdout)
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
-
-    def extract_json(self, raw_output):
-
-        try:
-        # Identify the JSON block within the output
-            start_idx = raw_output.find("{")
-            end_idx = raw_output.rfind("}")
-        
-            if start_idx != -1 and end_idx != -1:
-                json_string = raw_output[start_idx:end_idx + 1]
-                return json.loads(json_string)
-            else:
-                logger.error("No valid JSON object found in the Node.js output.")
-                logger.error(f"Raw output causing error: {raw_output}")
-                return None
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decoding error: {e}")
-            logger.error(f"Raw output causing error: {raw_output}")
-            return None
-
 
     def create_wallet(self):
         """Create a new wallet."""
         wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
-                # Construct the receiving address
+                # Construct the full receiving address
                 receiving_address = (
                     f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
                 )
-                # Prepare the parsed data
+                # Return relevant data
                 parsed_data = {
                     "mnemonic": wallet_data["mnemonic"],
                     "receiving_address": receiving_address,
@@ -87,9 +68,10 @@ class WalletBackend:
         balance_data = self.run_node_command("getBalance", address)
         if balance_data.get("success"):
             try:
+                balance = balance_data["balance"]
                 parsed_data = {
                     "address": address,
-                    "balance": balance_data["balance"],
+                    "balance": balance,
                 }
                 logger.info(f"Balance retrieved: {parsed_data}")
                 return parsed_data
@@ -107,7 +89,9 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                return {"success": True, "txid": transaction_data["txid"]}
+                txid = transaction_data["txid"]
+                logger.info(f"Transaction successful: {txid}")
+                return {"success": True, "txid": txid}
             except KeyError as e:
                 logger.error(f"Missing key in transaction data: {e}")
                 return {"success": False, "error": "Malformed transaction data"}
@@ -122,16 +106,12 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                return {"success": True, "txid": transaction_data["txid"]}
+                txid = transaction_data["txid"]
+                logger.info(f"KRC20 Transaction successful for {token_symbol}: {txid}")
+                return {"success": True, "txid": txid}
             except KeyError as e:
                 logger.error(f"Missing key in KRC20 transaction data: {e}")
                 return {"success": False, "error": "Malformed KRC20 transaction data"}
         else:
             logger.error(f"Failed to send KRC20 transaction: {transaction_data.get('error')}")
             return {"success": False, "error": transaction_data.get('error')}
-
-# Example usage
-if __name__ == "__main__":
-    wallet_backend = WalletBackend()
-    wallet_data = wallet_backend.create_wallet()
-    print(wallet_data)
