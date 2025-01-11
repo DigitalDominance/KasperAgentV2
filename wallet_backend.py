@@ -27,17 +27,17 @@ class WalletBackend:
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Parse and return JSON response
-            if result.returncode == 0 and stdout:
-                try:
-                    parsed_data = json.loads(stdout)
-                    return parsed_data
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON parsing error for {command}: {e}")
-                    logger.error(f"Raw output causing error: {stdout}")
-                    return {"success": False, "error": "Invalid JSON response"}
-            else:
-                return {"success": False, "error": stderr or "Unknown error occurred"}
+            # Extract JSON from stdout by finding the last curly brace
+            try:
+                json_start_index = stdout.rfind("{")
+                if json_start_index == -1:
+                    raise ValueError("No JSON object found in Node.js stdout")
+                json_response = json.loads(stdout[json_start_index:])
+                return json_response
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error for {command}: {e}")
+                logger.error(f"Raw output causing error: {stdout}")
+                return {"success": False, "error": "Invalid JSON response"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
@@ -47,12 +47,12 @@ class WalletBackend:
         wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
-                # Parse wallet data
+                # Construct the receiving address
+                receiving_address = f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
                 parsed_data = {
                     "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": wallet_data["receivingAddress"]["payload"],
-                    "change_address": wallet_data["changeAddress"]["payload"],
-                    "xprv": wallet_data["xPrv"]
+                    "receiving_address": receiving_address,
+                    "private_key": wallet_data["xPrv"]
                 }
                 logger.info(f"Wallet created successfully: {parsed_data}")
                 return parsed_data
@@ -68,7 +68,6 @@ class WalletBackend:
         balance_data = self.run_node_command("getBalance", address)
         if balance_data.get("success"):
             try:
-                # Parse balance data
                 parsed_data = {
                     "address": balance_data["address"],
                     "balance": balance_data["balance"]
@@ -89,7 +88,6 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                # Parse transaction response
                 parsed_data = {"txid": transaction_data["txid"]}
                 logger.info(f"Transaction successful: {parsed_data}")
                 return parsed_data
@@ -107,7 +105,6 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                # Parse KRC20 transaction response
                 parsed_data = {"txid": transaction_data["txid"]}
                 logger.info(f"KRC20 Transaction successful for {token_symbol}: {parsed_data}")
                 return parsed_data
