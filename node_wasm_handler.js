@@ -11,11 +11,12 @@ const {
     NetworkType,
     createTransactions,
     kaspaToSompi,
-    initConsolePanicHook,
 } = kaspa;
 
-// Enable console panic hooks for debugging
-initConsolePanicHook();
+// MongoDB connection setup
+const { MongoClient } = require("mongodb");
+const mongoUri = process.env.MONGODB_URI;
+let db;
 
 // Initialize RPC client
 const rpc = new RpcClient({
@@ -23,33 +24,28 @@ const rpc = new RpcClient({
     networkId: "mainnet",
 });
 
-// MongoDB connection setup
-const { MongoClient } = require("mongodb");
-const mongoUri = process.env.MONGODB_URI;
-let db;
-
+// Connect to MongoDB
 async function connectToDatabase() {
     try {
         const client = new MongoClient(mongoUri);
         await client.connect();
         db = client.db("kasperdb");
-        console.error("Connected to MongoDB."); // Use stderr for non-JSON logs
     } catch (err) {
-        console.error("Error connecting to MongoDB:", err);
+        console.error(JSON.stringify({ success: false, error: "Error connecting to MongoDB" }));
+        process.exit(1);
     }
 }
 
 // Retrieve user's private key from the database
 async function getUserPrivateKey(userId) {
     try {
-        const user = await db.collection("users").findOne({ user_id: parseInt(userId) }); // Ensure `user_id` is used properly
+        const user = await db.collection("users").findOne({ user_id: parseInt(userId) });
         if (!user || !user.private_key) {
             throw new Error(`Private key not found for user_id: ${userId}`);
         }
         return user.private_key;
     } catch (err) {
-        console.error(`Error retrieving private key for user_id ${userId}:`, err);
-        throw err;
+        throw new Error(`Error retrieving private key: ${err.message}`);
     }
 }
 
@@ -68,36 +64,36 @@ async function createWallet() {
         const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
         const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
 
-        return {
-            success: true,
-            mnemonic: mnemonic.phrase,
-            receivingAddress: receiveAddress.toString(),
-            changeAddress: changeAddress.toString(),
-            xPrv: xPrv.intoString("xprv"),
-        };
+        console.log(
+            JSON.stringify({
+                success: true,
+                mnemonic: mnemonic.phrase,
+                receivingAddress: receiveAddress.toString(),
+                changeAddress: changeAddress.toString(),
+                xPrv: xPrv.intoString("xprv"),
+            })
+        );
     } catch (err) {
-        console.error("Error creating wallet:", err);
-        return { success: false, error: err.message };
+        console.error(JSON.stringify({ success: false, error: err.message }));
     }
 }
 
 // Get balance for an address
 async function getBalance(address) {
     try {
-        console.log(`Fetching balance for address: ${address}`);
         await rpc.connect();
-
         const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
         await rpc.disconnect();
 
-        return {
-            success: true,
-            address,
-            balance: balances[0]?.amount || 0, // Balance in sompi
-        };
+        console.log(
+            JSON.stringify({
+                success: true,
+                address,
+                balance: balances[0]?.amount || 0,
+            })
+        );
     } catch (err) {
-        console.error("Error fetching balance:", err);
-        return { success: false, error: err.message };
+        console.error(JSON.stringify({ success: false, error: err.message }));
     }
 }
 
@@ -108,18 +104,8 @@ async function sendTransaction(userId, fromAddress, toAddress, amount) {
         const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
-
-        const { isSynced } = await rpc.getServerInfo();
-        if (!isSynced) {
-            throw new Error("Node is not synced. Please wait.");
-        }
-
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!entries.length) {
-            throw new Error("No UTXOs available.");
-        }
-
-        entries.sort((a, b) => a.amount > b.amount ? 1 : -1); // Sort UTXOs by amount
+        if (!entries.length) throw new Error("No UTXOs available");
 
         const { transactions } = await createTransactions({
             entries,
@@ -131,14 +117,12 @@ async function sendTransaction(userId, fromAddress, toAddress, amount) {
         for (const pending of transactions) {
             await pending.sign([privateKey]);
             const txid = await pending.submit(rpc);
-            console.log("Transaction submitted. TXID:", txid);
+            console.log(JSON.stringify({ success: true, txid }));
         }
 
         await rpc.disconnect();
-        return { success: true };
     } catch (err) {
-        console.error("Error sending transaction:", err);
-        return { success: false, error: err.message };
+        console.error(JSON.stringify({ success: false, error: err.message }));
     }
 }
 
@@ -149,23 +133,13 @@ async function sendKRC20Transaction(userId, fromAddress, toAddress, amount, toke
         const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
-
-        const { isSynced } = await rpc.getServerInfo();
-        if (!isSynced) {
-            throw new Error("Node is not synced. Please wait.");
-        }
-
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!entries.length) {
-            throw new Error("No UTXOs available.");
-        }
+        if (!entries.length) throw new Error("No UTXOs available");
 
-        entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
-
-        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`; // KRC20 transfer payload
+        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`;
         const { transactions } = await createTransactions({
             entries,
-            outputs: [{ address: toAddress, amount: 0n }], // KRC20 transfers do not require KAS outputs
+            outputs: [{ address: toAddress, amount: 0n }],
             priorityFee: 0n,
             payload,
             changeAddress: fromAddress,
@@ -174,14 +148,12 @@ async function sendKRC20Transaction(userId, fromAddress, toAddress, amount, toke
         for (const pending of transactions) {
             await pending.sign([privateKey]);
             const txid = await pending.submit(rpc);
-            console.log(`KRC20 Transaction submitted. TXID: ${txid}`);
+            console.log(JSON.stringify({ success: true, txid }));
         }
 
         await rpc.disconnect();
-        return { success: true };
     } catch (err) {
-        console.error(`Error sending ${tokenSymbol} transaction:`, err);
-        return { success: false, error: err.message };
+        console.error(JSON.stringify({ success: false, error: err.message }));
     }
 }
 
@@ -193,26 +165,24 @@ if (require.main === module) {
         try {
             await connectToDatabase();
 
-            let result;
             switch (command) {
                 case "createWallet":
-                    result = await createWallet();
+                    await createWallet();
                     break;
                 case "getBalance":
-                    result = await getBalance(args[0]);
+                    await getBalance(args[0]);
                     break;
                 case "sendTransaction":
-                    result = await sendTransaction(args[0], args[1], args[2], args[3]);
+                    await sendTransaction(args[0], args[1], args[2], args[3]);
                     break;
                 case "sendKRC20Transaction":
-                    result = await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
+                    await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
                     break;
                 default:
-                    result = { success: false, error: "Invalid command" };
+                    console.error(JSON.stringify({ success: false, error: "Invalid command" }));
             }
-            console.log(JSON.stringify(result, null, 2));
         } catch (e) {
-            console.error("Unexpected error:", e);
+            console.error(JSON.stringify({ success: false, error: e.message }));
         }
     })();
 }
