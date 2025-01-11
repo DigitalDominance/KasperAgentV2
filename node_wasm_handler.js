@@ -14,7 +14,7 @@ const rpc = new RpcClient({
 // Create a new wallet
 async function createWallet() {
     try {
-        const wallet = await rpc.createNewAddress();
+        const wallet = await rpc.wallet.create();
         return { success: true, address: wallet.address, privateKey: wallet.privateKey };
     } catch (err) {
         console.error("Error creating wallet:", err.message);
@@ -26,7 +26,7 @@ async function createWallet() {
 async function getBalance(address) {
     try {
         const balance = await rpc.getBalanceByAddress({ address });
-        return { success: true, balance: balance.balance };
+        return { success: true, balance: balance.balance / 1e8 }; // Convert sompi to KAS
     } catch (err) {
         console.error("Error fetching balance:", err.message);
         return { success: false, error: err.message };
@@ -39,7 +39,7 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKey) {
         const tx = await rpc.submitTransaction({
             fromAddress,
             toAddress,
-            amount: parseFloat(amount),
+            amount: parseInt(amount * 1e8, 10), // Convert KAS to sompi
             privateKey,
         });
         return { success: true, transactionId: tx.transactionId };
@@ -55,7 +55,7 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKey, 
         const tx = await rpc.submitTransaction({
             fromAddress,
             toAddress,
-            amount: parseFloat(amount),
+            amount: parseInt(amount * 1e8, 10), // Convert tokens to base units
             privateKey,
             tokenSymbol,
         });

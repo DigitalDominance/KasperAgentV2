@@ -150,19 +150,23 @@ async def start_command(update, context):
     try:
         user = db.get_user(user_id)
         if not user:
-            wallet_address, private_key = wallet.create_wallet()
-            if wallet_address and private_key:
+            wallet_data = wallet.create_wallet()
+            if wallet_data and wallet_data.get("success"):
+                wallet_address = wallet_data["address"]
+                private_key = wallet_data["privateKey"]
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
                 await update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
                 )
+            else:
+                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
             await update.message.reply_text(
                 f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An error occurred. Please try again later.")
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 async def handle_text_message(update, context):
     user_id = update.effective_user.id

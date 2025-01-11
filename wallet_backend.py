@@ -1,4 +1,3 @@
-
 import subprocess
 import json
 
@@ -16,7 +15,7 @@ class WalletBackend:
             if result.returncode == 0:
                 return json.loads(result.stdout)
             else:
-                raise Exception(result.stderr)
+                raise Exception(result.stderr.strip())
         except Exception as e:
             print(f"Error: {e}")
             return None
