@@ -1,4 +1,3 @@
-
 from pymongo import MongoClient, errors
 from pymongo.collection import ReturnDocument
 from pydantic import BaseModel, ValidationError, Field
@@ -17,6 +16,7 @@ class User(BaseModel):
     credits: int
     wallet: str
     private_key: str
+    mnemonic: Optional[str] = None  # Added to store the mnemonic for wallet recovery
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_active: Optional[datetime] = None
 
@@ -38,10 +38,16 @@ class DBManager:
             logging.error(f"Unexpected error occurred: {e}")
             raise
 
-    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str):
+    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
         """Add a new user to the database."""
         try:
-            user_data = User(user_id=user_id, credits=credits, wallet=wallet, private_key=private_key).dict()
+            user_data = User(
+                user_id=user_id,
+                credits=credits,
+                wallet=wallet,
+                private_key=private_key,
+                mnemonic=mnemonic,
+            ).dict()
             self.users.insert_one(user_data)
             logger.info(f"User {user_id} added to the database.")
         except ValidationError as e:
@@ -64,13 +70,34 @@ class DBManager:
             logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
+    def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
+        """Update a user's wallet information."""
+        try:
+            update_data = {
+                "wallet": wallet,
+                "private_key": private_key,
+                "mnemonic": mnemonic,
+                "last_active": datetime.utcnow(),
+            }
+            updated_user = self.users.find_one_and_update(
+                {"user_id": user_id},
+                {"$set": update_data},
+                return_document=ReturnDocument.AFTER,
+            )
+            if updated_user:
+                logger.info(f"Updated wallet for user {user_id}.")
+            else:
+                logger.warning(f"User {user_id} not found for wallet update.")
+        except Exception as e:
+            logger.error(f"Error updating wallet for user {user_id}: {e}")
+
     def update_user_credits(self, user_id: int, credits: int):
         """Update a user's credits."""
         try:
             updated_user = self.users.find_one_and_update(
                 {"user_id": user_id},
                 {"$set": {"credits": credits, "last_active": datetime.utcnow()}},
-                return_document=ReturnDocument.AFTER
+                return_document=ReturnDocument.AFTER,
             )
             if updated_user:
                 logger.info(f"Updated credits for user {user_id} to {credits}.")
@@ -84,7 +111,7 @@ class DBManager:
         try:
             self.users.update_one(
                 {"user_id": user_id},
-                {"$set": {"last_active": datetime.utcnow()}}
+                {"$set": {"last_active": datetime.utcnow()}},
             )
             logger.info(f"Updated last_active timestamp for user {user_id}.")
         except Exception as e:
@@ -108,7 +135,7 @@ class DBManager:
                 {
                     "updateOne": {
                         "filter": {"user_id": update["user_id"]},
-                        "update": {"$set": {"credits": update["credits"], "last_active": datetime.utcnow()}}
+                        "update": {"$set": {"credits": update["credits"], "last_active": datetime.utcnow()}},
                     }
                 }
                 for update in updates
