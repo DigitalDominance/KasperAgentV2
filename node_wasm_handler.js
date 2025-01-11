@@ -1,12 +1,24 @@
-import WebSocket from 'websocket';
-import { RpcClient, Resolver } from './wasm/kaspa.js';
+const WebSocket = require('websocket').w3cwebsocket;
 
-globalThis.WebSocket = WebSocket.w3cwebsocket;
+// Global WebSocket shim
+globalThis.WebSocket = WebSocket;
 
-const rpc = new RpcClient({
-    resolver: new Resolver(),
-    networkId: "mainnet",
-});
+// Dynamically load kaspa.js
+const loadKaspaModule = async () => {
+    const kaspa = await import('./wasm/kaspa.js'); // Use dynamic import
+    const { RpcClient, Resolver } = kaspa.default ? kaspa.default : kaspa; // Adjust for default export
+    return { RpcClient, Resolver };
+};
+
+// Initialize RPC Client
+let rpc;
+(async () => {
+    const { RpcClient, Resolver } = await loadKaspaModule();
+    rpc = new RpcClient({
+        resolver: new Resolver(),
+        networkId: "mainnet",
+    });
+})();
 
 // Create a new wallet
 async function createWallet() {
