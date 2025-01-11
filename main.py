@@ -109,6 +109,41 @@ async def generate_openai_response(user_text: str) -> str:
             logger.error(f"Error in OpenAI Chat Completion: {e}")
             return "❌ An error occurred while generating a response."
 
+# Background task to monitor balances
+async def monitor_balances():
+    while True:
+        try:
+            users = db.users.find()
+            tasks = []
+
+            for user in users:
+                wallet_address = user["wallet"]
+                private_key = user["private_key"]
+                tasks.append(process_user_balance(wallet_address, private_key, user["user_id"]))
+
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            logger.error(f"Error in monitor_balances: {e}")
+        finally:
+            await asyncio.sleep(30)
+
+async def process_user_balance(wallet_address, private_key, user_id):
+    try:
+        kasper_balance = await wallet.get_kasper_balance(wallet_address)
+        if kasper_balance > 0:
+            kas_balance = await wallet.get_kas_balance(wallet_address)
+            if kas_balance < 20:
+                await wallet.send_kas(MAIN_WALLET_ADDRESS, wallet_address, 20 - kas_balance, MAIN_WALLET_PRIVATE_KEY)
+            await wallet.send_krc20(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
+            remaining_kas = await wallet.get_kas_balance(wallet_address)
+            if remaining_kas > 0:
+                await wallet.send_kas(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
+            credits_to_add = int(kasper_balance // CREDIT_CONVERSION_RATE)
+            if credits_to_add > 0:
+                db.update_user_credits(user_id, db.get_user(user_id)["credits"] + credits_to_add)
+    except Exception as e:
+        logger.error(f"Error processing balance for user {user_id}: {e}")
+
 # Command Handlers
 async def start_command(update, context):
     user_id = update.effective_user.id
@@ -118,23 +153,16 @@ async def start_command(update, context):
             wallet_address, private_key = wallet.create_wallet()
             if wallet_address and private_key:
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
-                logger.info(f"New user registered: {user_id}")
                 await update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
                 )
-            else:
-                logger.error(f"Failed to generate wallet for user {user_id}")
-                await update.message.reply_text(
-                    "⚠️ Error generating wallet. Please try again later or contact support."
-                )
         else:
-            db.update_last_active(user_id)
             await update.message.reply_text(
                 f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+        await update.message.reply_text("❌ An error occurred. Please try again later.")
 
 async def handle_text_message(update, context):
     user_id = update.effective_user.id
@@ -142,47 +170,26 @@ async def handle_text_message(update, context):
     user = db.get_user(user_id)
 
     if not user or user.get("credits", 0) <= 0:
-        await update.message.reply_text(
-            "❌ You have no credits remaining. Please use /topup to add more."
-        )
+        await update.message.reply_text("❌ You have no credits remaining.")
         return
 
     try:
         await update.message.reply_text("👻 KASPER is thinking...")
         ai_response = await generate_openai_response(user_text)
-        if not ai_response:
-            raise ValueError("AI response was empty.")
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
         db.update_user_credits(user_id, user["credits"] - 1)
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
     except Exception as e:
-        logger.error(f"Error in handle_text_message for user {user_id}: {e}")
-        await update.message.reply_text("❌ An error occurred. Please try again later.")
-
-async def topup_command(update, context):
-    user_id = update.effective_user.id
-    try:
-        user = db.get_user(user_id)
-        if not user:
-            await update.message.reply_text("Please use /start first to register.")
-            return
-
-        wallet_address = user["wallet"]
-        await update.message.reply_text(
-            f"💰 To top up, send KASPER tokens to your wallet: {wallet_address}. 1 credit = 100 KASPER."
-        )
-    except Exception as e:
-        logger.error(f"Error in topup_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An error occurred. Please try again later.")
+        logger.error(f"Error: {e}")
+        await update.message.reply_text("❌ An error occurred.")
 
 # Main function
 def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     loop = asyncio.get_event_loop()
