@@ -1,13 +1,15 @@
-const { RpcClient, Encoding, initConsolePanicHook } = require('./wasm/kaspa');
+const { RpcClient, Resolver, initConsolePanicHook } = require('./wasm/kaspa');
 
+// Global WebSocket shim for environments without native WebSocket support
 globalThis.WebSocket = require('websocket').w3cwebsocket;
 
-// Enable console panic hooks
+// Enable console panic hooks for debugging
 initConsolePanicHook();
 
+// Initialize RPC client with the integrated public URLs
 const rpc = new RpcClient({
-    encoding: Encoding.Borsh,
-    network: "mainnet",
+    resolver: new Resolver(),
+    networkId: "mainnet", // Specify the network (e.g., "mainnet")
 });
 
 // Create a new wallet
