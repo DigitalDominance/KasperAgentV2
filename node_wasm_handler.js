@@ -4,15 +4,12 @@ const kaspa = require('./wasm/kaspa.js');
 const { RpcClient, Resolver } = kaspa;
 
 // Global WebSocket shim
-globalThis.WebSocket = require('websocket').w3cwebsocket;
+globalThis.WebSocket = WebSocket;
 
 const rpc = new RpcClient({
     resolver: new Resolver(),
     networkId: "mainnet",
 });
-
-
-
 
 // Create a new wallet
 async function createWallet() {
@@ -92,3 +89,4 @@ if (require.main === module) {
             console.error(JSON.stringify({ success: false, error: e.message }));
         }
     })();
+}
