@@ -27,9 +27,30 @@ class WalletBackend:
             logger.error(f"Error while running Node.js command '{command}': {e}")
             return {"success": False, "error": str(e)}
 
-    def create_wallet(self):
-        """Create a new wallet."""
-        return self.run_node_command("createWallet")
+def create_wallet(self):
+    """Create a new wallet."""
+    wallet_data = self.run_node_command("createWallet")
+    if wallet_data.get("success"):
+        # Validate necessary fields
+        receiving_address = wallet_data.get("receivingAddress")
+        xprv = wallet_data.get("xPrv")
+
+        if receiving_address and "prefix" in receiving_address and "payload" in receiving_address and xprv:
+            receiving_address_full = f"{receiving_address['prefix']}:{receiving_address['payload']}"
+            return {
+                "success": True,
+                "mnemonic": wallet_data["mnemonic"],
+                "receiving_address": receiving_address_full,
+                "change_address": f"{wallet_data['changeAddress']['prefix']}:{wallet_data['changeAddress']['payload']}",
+                "private_key": xprv,
+            }
+        else:
+            logger.error(f"Incomplete wallet data: {wallet_data}")
+            return {"success": False, "error": "Incomplete wallet data"}
+    else:
+        logger.error(f"Failed to create wallet: {wallet_data}")
+        return {"success": False, "error": wallet_data.get("error", "Unknown error")}
+
 
     def get_balance(self, address):
         """Get the balance of a specific address."""
