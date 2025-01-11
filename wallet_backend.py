@@ -36,6 +36,26 @@ logger = logging.getLogger(__name__)
 class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
+        
+     def create_wallet(self):
+        """Create a new wallet."""
+        wallet_data = self.run_node_command("createWallet")
+        if wallet_data.get("success"):
+            try:
+                receiving_address = wallet_data["receivingAddress"]
+                change_address = wallet_data["changeAddress"]
+                return {
+                    "success": True,
+                    "mnemonic": wallet_data["mnemonic"],
+                    "receiving_address": f"{receiving_address['prefix']}:{receiving_address['payload']}",
+                    "change_address": f"{change_address['prefix']}:{change_address['payload']}",
+                    "private_key": wallet_data["xPrv"],
+                }
+            except KeyError as e:
+                logger.error(f"Malformed wallet data: {e}")
+                return {"success": False, "error": "Incomplete wallet data"}
+        else:
+            return wallet_data
 
     def run_node_command(self, command, *args):
         """Run a Node.js command and handle the response."""
@@ -62,26 +82,6 @@ class WalletBackend:
         except Exception as e:
             logger.error(f"Error running {command}: {e}")
             return {"success": False, "error": str(e)}
-
-    def create_wallet(self):
-        """Create a new wallet."""
-        wallet_data = self.run_node_command("createWallet")
-        if wallet_data.get("success"):
-            try:
-                receiving_address = wallet_data["receivingAddress"]
-                change_address = wallet_data["changeAddress"]
-                return {
-                    "success": True,
-                    "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": f"{receiving_address['prefix']}:{receiving_address['payload']}",
-                    "change_address": f"{change_address['prefix']}:{change_address['payload']}",
-                    "private_key": wallet_data["xPrv"],
-                }
-            except KeyError as e:
-                logger.error(f"Malformed wallet data: {e}")
-                return {"success": False, "error": "Incomplete wallet data"}
-        else:
-            return wallet_data
 
 
 
