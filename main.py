@@ -153,27 +153,33 @@ async def start_command(update, context):
     try:
         user = db.get_user(user_id)
         if not user:
+            # If the user doesn't exist, create a wallet and add them to the database
             wallet_data = wallet.create_wallet()
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receiving_address")
                 private_key = wallet_data.get("private_key")
-
                 if not wallet_address or not private_key:
                     raise ValueError("Wallet data is incomplete")
-
+                
+                # Add user to the database with 3 free credits
                 db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
+                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. "
+                    f"You have 3 free credits and 3 total credits."
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
+            # If the user exists, show their current total and free credits
+            total_credits = user.get("credits", 0)
             await update.message.reply_text(
-                f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
+                f"👋 Welcome back! You have {total_credits} credits in total. "
+                f"Your deposit wallet is: {user['wallet']}."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 async def handle_text_message(update, context):
     user_id = update.effective_user.id
