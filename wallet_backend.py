@@ -2,7 +2,9 @@
 import logging
 import asyncio
 from typing import Optional
-from wasm import RpcClient, Resolver
+from wasm.resolver import Resolver
+from wasm.rpc_client import RpcClient
+
 
 
 class WalletBackend:
