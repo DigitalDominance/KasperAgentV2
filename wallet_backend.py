@@ -68,22 +68,47 @@ class WalletBackend:
         """Get the balance of a specific address."""
         return self.run_node_command("getBalance", address)
 
-    def send_transaction(self, from_address, to_address, amount, private_key):
+    def send_kas_transaction(self, from_address, to_address, amount, private_key=None, user_id=None):
         """Send a KAS transaction."""
-        return self.run_node_command(
-            "sendTransaction", from_address, to_address, str(amount), private_key
-        )
+        if user_id:
+            # Retrieve private key for the user from Node.js
+            response = self.run_node_command("sendTransaction", str(user_id), from_address, to_address, str(amount))
+        elif private_key:
+            # Use provided private key (e.g., from environment variables)
+            response = self.run_node_command("sendTransaction", from_address, to_address, str(amount), private_key)
+        else:
+            logger.error("Either user_id or private_key must be provided for send_kas_transaction.")
+            return {"success": False, "error": "Missing user_id or private_key"}
+    
+        if response.get("success"):
+            return response
+        else:
+            logger.error(f"Failed to send KAS transaction: {response.get('error')}")
+            return response
 
-    def send_krc20_transaction(self, user_id, from_address, to_address, amount, token_symbol="KASPER"):
+
+    def send_krc20_transaction(self, from_address, to_address, amount, token_symbol="KASPER", private_key=None, user_id=None):
         """Send a KRC20 token transaction."""
-        response = self.run_node_command(
-            "sendKRC20Transaction", str(user_id), from_address, to_address, str(amount), token_symbol
-        )
+        if user_id:
+            # Retrieve private key for the user from Node.js
+            response = self.run_node_command(
+                "sendKRC20Transaction", str(user_id), from_address, to_address, str(amount), token_symbol
+            )
+        elif private_key:
+            # Use provided private key (e.g., from environment variables)
+            response = self.run_node_command(
+                "sendKRC20Transaction", from_address, to_address, str(amount), private_key, token_symbol
+            )
+        else:
+            logger.error("Either user_id or private_key must be provided for send_krc20_transaction.")
+            return {"success": False, "error": "Missing user_id or private_key"}
+    
         if response.get("success"):
             return response
         else:
             logger.error(f"Failed to send KRC20 transaction: {response.get('error')}")
             return response
+
 
 
 # Example usage
