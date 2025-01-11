@@ -43,7 +43,7 @@ async function connectToDatabase() {
 // Retrieve user's private key from the database
 async function getUserPrivateKey(userId) {
     try {
-        const user = await db.collection("users").findOne({ user_id: userId });
+        const user = await db.collection("users").findOne({ user_id: parseInt(userId) });
         if (!user || !user.private_key) {
             throw new Error(`Private key not found for user_id: ${userId}`);
         }
