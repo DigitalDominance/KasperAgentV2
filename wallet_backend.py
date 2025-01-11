@@ -41,8 +41,10 @@ class WalletBackend:
     def extract_json(self, raw_output):
         """Extract the valid JSON object from raw Node.js output."""
         try:
-            # Split the raw output by lines and check each line for JSON
+            # Split the raw output into lines
             lines = raw_output.splitlines()
+
+            # Check each line to find JSON data
             for line in lines:
                 line = line.strip()
                 if line.startswith("{") and line.endswith("}"):
@@ -62,9 +64,11 @@ class WalletBackend:
         wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
+                # Construct the receiving address
                 receiving_address = (
                     f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
                 )
+                # Prepare the parsed data
                 parsed_data = {
                     "mnemonic": wallet_data["mnemonic"],
                     "receiving_address": receiving_address,
