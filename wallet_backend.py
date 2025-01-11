@@ -74,11 +74,17 @@ class WalletBackend:
             "sendTransaction", from_address, to_address, str(amount), private_key
         )
 
-    def send_krc20_transaction(self, from_address, to_address, amount, private_key, token_symbol="KASPER"):
-        """Send a KRC20 token transaction."""
-        return self.run_node_command(
-            "sendKRC20Transaction", from_address, to_address, str(amount), private_key, token_symbol
-        )
+    def send_krc20_transaction(self, user_id, from_address, to_address, amount, token_symbol="KASPER"):
+    """Send a KRC20 token transaction."""
+    response = self.run_node_command(
+        "sendKRC20Transaction", str(user_id), from_address, to_address, str(amount), token_symbol
+    )
+    if response.get("success"):
+        return response
+    else:
+        logger.error(f"Failed to send KRC20 transaction: {response.get('error')}")
+        return response
+
 
 # Example usage
 if __name__ == "__main__":
