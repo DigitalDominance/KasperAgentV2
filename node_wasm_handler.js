@@ -36,11 +36,11 @@ async function connectToDatabase() {
 }
 
 // Retrieve user's private key from the database
-async function getUserPrivateKey(userId) {
+async function getUserPrivateKey(user_id) {
     try {
-        const user = await db.collection("users").findOne({ user_id: parseInt(userId) });
+        const user = await db.collection("users").findOne({ user_id: parseInt(user_id) }); // Ensure field name matches database
         if (!user || !user.private_key) {
-            throw new Error(`Private key not found for user_id: ${userId}`);
+            throw new Error(`Private key not found for user_id: ${user_id}`);
         }
         return user.private_key;
     } catch (err) {
@@ -97,9 +97,9 @@ async function getBalance(address) {
 }
 
 // Send a KAS transaction
-async function sendTransaction(userId, fromAddress, toAddress, amount) {
+async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     try {
-        const privateKeyStr = await getUserPrivateKey(userId);
+        const privateKeyStr = await getUserPrivateKey(user_id);
         const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
@@ -126,9 +126,9 @@ async function sendTransaction(userId, fromAddress, toAddress, amount) {
 }
 
 // Send a KRC20 token transaction
-async function sendKRC20Transaction(userId, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
+async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
-        const privateKeyStr = await getUserPrivateKey(userId);
+        const privateKeyStr = await getUserPrivateKey(user_id);
         const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
