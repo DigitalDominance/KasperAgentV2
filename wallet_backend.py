@@ -9,8 +9,9 @@ logging.basicConfig(level=logging.INFO)
 class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
+
     def run_node_command(self, command, *args):
-    """Run a Node.js command and handle the response."""
+        """Run a Node.js command and handle the response."""
         try:
             result = subprocess.run(
                 ["node", self.node_script_path, command, *args],
@@ -20,48 +21,51 @@ class WalletBackend:
             stdout = result.stdout.strip()
             stderr = result.stderr.strip()
 
-        # Log stdout and stderr for debugging
+            # Log stdout and stderr for debugging
             if stdout:
                 logger.info(f"Node.js stdout for {command}: {stdout}")
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-        # Extract JSON from stdout
-            json_data = self.extract_json(stdout)
-            if json_data:
+            # Attempt to parse JSON from the stdout
+            try:
+                json_data = json.loads(stdout)
                 return json_data
-            else:
-                logger.error("Failed to extract JSON. Raw output:")
-                logger.error(stdout)
-                return {"success": False, "error": "Failed to extract JSON from Node.js output"}
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to decode JSON. Raw output: {stdout}")
+                return {"success": False, "error": "Invalid JSON in Node.js output"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
 
     def create_wallet(self):
-   
-    wallet_data = self.run_node_command("createWallet")
-    if wallet_data.get("success"):
-        try:
-            # Combine prefix and payload for the receiving address
-            receiving_address_obj = wallet_data["receivingAddress"]
-            receiving_address = f"{receiving_address_obj['prefix']}:{receiving_address_obj['payload']}"
-            
-            # Prepare the final output
-            parsed_data = {
-                "mnemonic": wallet_data["mnemonic"],
-                "receiving_address": receiving_address,
-                "private_key": wallet_data["xPrv"],
-            }
-            logger.info(f"Wallet created successfully: {parsed_data}")
-            return parsed_data
-        except KeyError as e:
-            logger.error(f"Missing key in wallet data: {e}")
-            return {"success": False, "error": "Malformed wallet data"}
-    else:
-        logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
-        return {"success": False, "error": wallet_data.get('error')}
+        """Create a new wallet."""
+        wallet_data = self.run_node_command("createWallet")
+        if wallet_data.get("success"):
+            try:
+                # Combine prefix and payload for the receiving address
+                receiving_address_obj = wallet_data["receivingAddress"]
+                receiving_address = f"{receiving_address_obj['prefix']}:{receiving_address_obj['payload']}"
 
+                # Combine prefix and payload for the change address
+                change_address_obj = wallet_data["changeAddress"]
+                change_address = f"{change_address_obj['prefix']}:{change_address_obj['payload']}"
+
+                # Prepare the parsed data
+                parsed_data = {
+                    "mnemonic": wallet_data["mnemonic"],
+                    "receiving_address": receiving_address,
+                    "change_address": change_address,
+                    "private_key": wallet_data["xPrv"],
+                }
+                logger.info(f"Wallet created successfully: {parsed_data}")
+                return parsed_data
+            except KeyError as e:
+                logger.error(f"Missing key in wallet data: {e}")
+                return {"success": False, "error": "Malformed wallet data"}
+        else:
+            logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
+            return {"success": False, "error": wallet_data.get('error')}
 
     def get_balance(self, address):
         """Get the balance of a specific address."""
@@ -115,3 +119,9 @@ class WalletBackend:
         else:
             logger.error(f"Failed to send KRC20 transaction: {transaction_data.get('error')}")
             return {"success": False, "error": transaction_data.get('error')}
+
+# Example usage:
+if __name__ == "__main__":
+    backend = WalletBackend()
+    wallet = backend.create_wallet()
+    print(wallet)
