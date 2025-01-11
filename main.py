@@ -1,4 +1,4 @@
-import os
+  import os
 import logging
 import asyncio
 from datetime import datetime, timedelta
@@ -204,3 +204,6 @@ async def handle_text_message(update, context):
         # Send responses
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
+    except Exception as e:
+        logger.error(f"Error generating {user_id}: {e}")
+        await update.message.reply_text("❌ An error occurred. Please try again later.")
