@@ -1,4 +1,4 @@
-import WebSocket from 'websocket';
+const WebSocket = require('websocket').w3cwebsocket;
 
 const kaspa = require('./wasm/kaspa.js');
 const { RpcClient, Resolver } = kaspa;
