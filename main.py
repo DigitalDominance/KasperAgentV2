@@ -132,13 +132,13 @@ async def process_user_balance(wallet_address, private_key, user_id):
     try:
         kasper_balance = await wallet.get_kasper_balance(wallet_address)
         if kasper_balance > 0:
-            kas_balance = await wallet.get_kas_balance(wallet_address)
+            kas_balance = await wallet.get_balance(wallet_address)
             if kas_balance < 20:
-                await wallet.send_kas(MAIN_WALLET_ADDRESS, wallet_address, 20 - kas_balance, MAIN_WALLET_PRIVATE_KEY)
-            await wallet.send_krc20(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
-            remaining_kas = await wallet.get_kas_balance(wallet_address)
+                await wallet.send_transaction(MAIN_WALLET_ADDRESS, wallet_address, 20 - kas_balance, MAIN_WALLET_PRIVATE_KEY)
+            await wallet.send_krc20_transaction(wallet_address, MAIN_WALLET_ADDRESS, kasper_balance, private_key)
+            remaining_kas = await wallet.get_balance(wallet_address)
             if remaining_kas > 0:
-                await wallet.send_kas(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
+                await wallet.send_transaction(wallet_address, MAIN_WALLET_ADDRESS, remaining_kas, private_key)
             credits_to_add = int(kasper_balance // CREDIT_CONVERSION_RATE)
             if credits_to_add > 0:
                 user = db.get_user(user_id)
@@ -155,8 +155,8 @@ async def start_command(update, context):
         if not user:
             wallet_data = wallet.create_wallet()
             if wallet_data and wallet_data.get("success"):
-                wallet_address = wallet_data.get("receivingAddress")
-                private_key = wallet_data.get("xPrv")
+                wallet_address = wallet_data.get("receiving_address")
+                private_key = wallet_data.get("private_key")
 
                 if not wallet_address or not private_key:
                     raise ValueError("Wallet data is incomplete")
