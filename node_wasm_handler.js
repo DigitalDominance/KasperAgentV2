@@ -31,7 +31,6 @@ async function connectToDatabase() {
         await client.connect();
         db = client.db("kasperdb");
     } catch (err) {
-        console.error(JSON.stringify({ success: false, error: "Error connecting to MongoDB" }));
         process.exit(1);
     }
 }
