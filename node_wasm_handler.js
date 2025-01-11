@@ -7,7 +7,7 @@ const {
     Resolver,
     Mnemonic,
     XPrv,
-    DerivationPath,
+    PrivateKey,
     NetworkType,
     createTransactions,
     kaspaToSompi,
@@ -41,16 +41,8 @@ async function createWallet() {
         return {
             success: true,
             mnemonic: mnemonic.phrase,
-            receivingAddress: {
-                version: receiveAddress.version,
-                prefix: receiveAddress.prefix,
-                payload: receiveAddress.payload,
-            },
-            changeAddress: {
-                version: changeAddress.version,
-                prefix: changeAddress.prefix,
-                payload: changeAddress.payload,
-            },
+            receivingAddress: receiveAddress.toString(),
+            changeAddress: changeAddress.toString(),
             xPrv: xPrv.intoString("xprv"),
         };
     } catch (err) {
@@ -71,7 +63,7 @@ async function getBalance(address) {
         return {
             success: true,
             address,
-            balance: balances[0]?.amount / 1e8 || 0, // Convert sompi to KAS
+            balance: balances[0]?.amount || 0, // Balance in sompi
         };
     } catch (err) {
         console.error("Error fetching balance:", err);
@@ -79,10 +71,10 @@ async function getBalance(address) {
     }
 }
 
-// Send a transaction
+// Send a KAS transaction
 async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     try {
-        const privateKey = new PrivateKey(privateKeyStr);
+        const privateKey = PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
@@ -111,11 +103,10 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     }
 }
 
-
 // Send a KRC20 token transaction
 async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol = "KASPER") {
     try {
-        const privateKey = new PrivateKey(privateKeyStr);
+        const privateKey = PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
@@ -123,7 +114,7 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
             return { success: false, error: "No UTXOs available" };
         }
 
-        const payload = `krc20|${tokenSymbol}|${amount}`; // Token transfer payload
+        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`; // Token transfer payload
         const { transactions } = await createTransactions({
             entries,
             outputs: [{ address: toAddress, amount: 0n }], // KRC20 transfers do not send KAS
@@ -145,7 +136,6 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
         return { success: false, error: err.message };
     }
 }
-
 
 // Generate multiple receive/change addresses using HD wallet (xPub)
 async function generateAddresses(xPrvStr, accountIndex = 0, count = 10) {
