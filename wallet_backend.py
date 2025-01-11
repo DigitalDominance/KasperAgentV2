@@ -39,7 +39,7 @@ class WalletBackend:
             return {"success": False, "error": str(e)}
 
     def extract_json(self, raw_output):
-    """Extract the valid JSON object from raw Node.js output."""
+
     try:
         # Identify the JSON block within the output
         start_idx = raw_output.find("{")
