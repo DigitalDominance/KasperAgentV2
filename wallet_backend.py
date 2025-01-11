@@ -21,15 +21,18 @@ class WalletBackend:
             stdout = result.stdout.strip()
             stderr = result.stderr.strip()
 
+            # Log Node.js outputs
             if stdout:
                 logger.info(f"Node.js stdout for {command}: {stdout}")
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Parse JSON directly
+            # Parse JSON output if available
             try:
-                return json.loads(stdout)
-            except json.JSONDecodeError:
+                # Extract JSON if mixed with logs
+                json_output = stdout[stdout.find("{"):]
+                return json.loads(json_output)
+            except (json.JSONDecodeError, ValueError):
                 logger.error(f"Invalid JSON output: {stdout}")
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
         except Exception as e:
@@ -41,13 +44,11 @@ class WalletBackend:
         wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
-                receiving_address = wallet_data["receivingAddress"]
-                change_address = wallet_data["changeAddress"]
                 return {
                     "success": True,
                     "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": f"{receiving_address['prefix']}:{receiving_address['payload']}",
-                    "change_address": f"{change_address['prefix']}:{change_address['payload']}",
+                    "receiving_address": wallet_data["receivingAddress"],
+                    "change_address": wallet_data["changeAddress"],
                     "private_key": wallet_data["xPrv"],
                 }
             except KeyError as e:
