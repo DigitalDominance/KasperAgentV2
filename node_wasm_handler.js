@@ -7,12 +7,6 @@ const rpc = new RpcClient({
     encoding: Encoding.Borsh,
     network: "mainnet",
 });
-// Configure the RPC client
-const rpc = new RpcClient({
-    url: "127.0.0.1", // Replace with the appropriate Kaspa node URL
-    encoding: Encoding.Borsh,
-    network: "mainnet" // Specify the network
-});
 
 // Create a new wallet
 async function createWallet() {
