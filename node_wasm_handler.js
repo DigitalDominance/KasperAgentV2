@@ -74,13 +74,25 @@ async function getBalance(address) {
 // Send a KAS transaction
 async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     try {
-        const privateKey = PrivateKey.fromString(privateKeyStr);
+        const privateKey = new kaspa.PrivateKey(privateKeyStr);
+        const sourceAddress = privateKey.toKeypair().toAddress("mainnet"); // Adjust networkId if necessary
+        console.info(`Source address: ${sourceAddress}`);
+
         await rpc.connect();
+
+        const { isSynced } = await rpc.getServerInfo();
+        if (!isSynced) {
+            console.error("Node is not synced. Please wait.");
+            await rpc.disconnect();
+            return { success: false, error: "Node is not synced" };
+        }
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
         if (!entries.length) {
             return { success: false, error: "No UTXOs available" };
         }
+
+        entries.sort((a, b) => a.amount > b.amount ? 1 : -1); // Sort UTXOs by amount
 
         const { transactions } = await createTransactions({
             entries,
@@ -90,9 +102,11 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
         });
 
         for (const pending of transactions) {
+            console.log("Signing transaction with private key...");
             await pending.sign([privateKey]);
+            console.log("Submitting transaction...");
             const txid = await pending.submit(rpc);
-            console.log("Transaction submitted, txid:", txid);
+            console.log("Transaction submitted. TXID:", txid);
         }
 
         await rpc.disconnect();
@@ -106,27 +120,41 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
 // Send a KRC20 token transaction
 async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol = "KASPER") {
     try {
-        const privateKey = PrivateKey.fromString(privateKeyStr);
+        const privateKey = new kaspa.PrivateKey(privateKeyStr);
+        const sourceAddress = privateKey.toKeypair().toAddress("mainnet");
+        console.info(`Source address: ${sourceAddress}`);
+
         await rpc.connect();
+
+        const { isSynced } = await rpc.getServerInfo();
+        if (!isSynced) {
+            console.error("Node is not synced. Please wait.");
+            await rpc.disconnect();
+            return { success: false, error: "Node is not synced" };
+        }
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
         if (!entries.length) {
             return { success: false, error: "No UTXOs available" };
         }
 
-        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`; // Token transfer payload
+        entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
+
+        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`; // KRC20 transfer payload
         const { transactions } = await createTransactions({
             entries,
-            outputs: [{ address: toAddress, amount: 0n }], // KRC20 transfers do not send KAS
+            outputs: [{ address: toAddress, amount: 0n }], // KRC20 transfers do not require KAS outputs
             priorityFee: 0n,
             payload,
             changeAddress: fromAddress,
         });
 
         for (const pending of transactions) {
+            console.log("Signing KRC20 transaction...");
             await pending.sign([privateKey]);
+            console.log("Submitting KRC20 transaction...");
             const txid = await pending.submit(rpc);
-            console.log(`KRC20 Transaction submitted, txid: ${txid}`);
+            console.log(`KRC20 Transaction submitted. TXID: ${txid}`);
         }
 
         await rpc.disconnect();
