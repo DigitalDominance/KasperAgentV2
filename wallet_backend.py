@@ -27,20 +27,32 @@ class WalletBackend:
             if stderr:
                 logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Extract JSON from stdout by finding the last curly brace
-            try:
-                json_start_index = stdout.rfind("{")
-                if json_start_index == -1:
-                    raise ValueError("No JSON object found in Node.js stdout")
-                json_response = json.loads(stdout[json_start_index:])
-                return json_response
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON parsing error for {command}: {e}")
-                logger.error(f"Raw output causing error: {stdout}")
-                return {"success": False, "error": "Invalid JSON response"}
+            # Extract JSON response
+            json_data = self.extract_json(stdout)
+            if json_data:
+                return json_data
+            else:
+                return {"success": False, "error": "Failed to extract JSON from Node.js output"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
+
+    def extract_json(self, raw_output):
+        """Extract the last JSON object from raw Node.js output."""
+        try:
+            # Locate the last JSON object in the output
+            json_start = raw_output.rfind("{")
+            if json_start == -1:
+                logger.error("No JSON object found in the Node.js output.")
+                return None
+
+            # Parse the JSON object
+            json_string = raw_output[json_start:]
+            return json.loads(json_string)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decoding error: {e}")
+            logger.error(f"Raw output causing error: {raw_output}")
+            return None
 
     def create_wallet(self):
         """Create a new wallet."""
@@ -52,7 +64,7 @@ class WalletBackend:
                 parsed_data = {
                     "mnemonic": wallet_data["mnemonic"],
                     "receiving_address": receiving_address,
-                    "private_key": wallet_data["xPrv"]
+                    "private_key": wallet_data["xPrv"],
                 }
                 logger.info(f"Wallet created successfully: {parsed_data}")
                 return parsed_data
@@ -67,19 +79,10 @@ class WalletBackend:
         """Get the balance of a specific address."""
         balance_data = self.run_node_command("getBalance", address)
         if balance_data.get("success"):
-            try:
-                parsed_data = {
-                    "address": balance_data["address"],
-                    "balance": balance_data["balance"]
-                }
-                logger.info(f"Balance retrieved for {address}: {parsed_data['balance']} KAS")
-                return parsed_data
-            except KeyError as e:
-                logger.error(f"Missing key in balance data: {e}")
-                return {"success": False, "error": "Malformed balance data"}
+            logger.info(f"Balance retrieved for {address}: {balance_data['balance']} KAS")
         else:
             logger.error(f"Failed to retrieve balance for {address}: {balance_data.get('error')}")
-            return {"success": False, "error": balance_data.get('error')}
+        return balance_data
 
     def send_transaction(self, from_address, to_address, amount, private_key):
         """Send a KAS transaction."""
@@ -87,16 +90,10 @@ class WalletBackend:
             "sendTransaction", from_address, to_address, str(amount), private_key
         )
         if transaction_data.get("success"):
-            try:
-                parsed_data = {"txid": transaction_data["txid"]}
-                logger.info(f"Transaction successful: {parsed_data}")
-                return parsed_data
-            except KeyError as e:
-                logger.error(f"Missing key in transaction data: {e}")
-                return {"success": False, "error": "Malformed transaction data"}
+            logger.info(f"Transaction successful: {transaction_data}")
         else:
             logger.error(f"Failed to send transaction: {transaction_data.get('error')}")
-            return {"success": False, "error": transaction_data.get('error')}
+        return transaction_data
 
     def send_krc20_transaction(self, from_address, to_address, amount, private_key, token_symbol="KASPER"):
         """Send a KRC20 token transaction."""
@@ -104,13 +101,7 @@ class WalletBackend:
             "sendKRC20Transaction", from_address, to_address, str(amount), private_key, token_symbol
         )
         if transaction_data.get("success"):
-            try:
-                parsed_data = {"txid": transaction_data["txid"]}
-                logger.info(f"KRC20 Transaction successful for {token_symbol}: {parsed_data}")
-                return parsed_data
-            except KeyError as e:
-                logger.error(f"Missing key in KRC20 transaction data: {e}")
-                return {"success": False, "error": "Malformed KRC20 transaction data"}
+            logger.info(f"KRC20 Transaction successful for {token_symbol}: {transaction_data}")
         else:
             logger.error(f"Failed to send KRC20 transaction: {transaction_data.get('error')}")
-            return {"success": False, "error": transaction_data.get('error')}
+        return transaction_data
