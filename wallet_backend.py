@@ -32,7 +32,8 @@ class WalletBackend:
             if json_data:
                 return json_data
             else:
-                return {"success": False, "error": "Failed to extract JSON from Node.js output"}
+                logger.error("Failed to extract JSON from Node.js output.")
+                return {"success": False, "error": "Invalid JSON in Node.js output"}
         except Exception as e:
             logger.error(f"Exception when running {command}: {e}")
             return {"success": False, "error": str(e)}
@@ -40,12 +41,12 @@ class WalletBackend:
     def extract_json(self, raw_output):
         """Extract the valid JSON object from raw Node.js output."""
         try:
-            # Split output by lines and locate the JSON portion
             lines = raw_output.splitlines()
             for line in lines:
-                if line.strip().startswith("{") and line.strip().endswith("}"):
-                    return json.loads(line.strip())
-            logger.error("No JSON object found in the Node.js output.")
+                line = line.strip()
+                if line.startswith("{") and line.endswith("}"):
+                    return json.loads(line)
+            logger.error("No valid JSON object found in the Node.js output.")
             return None
         except json.JSONDecodeError as e:
             logger.error(f"JSON decoding error: {e}")
@@ -57,12 +58,9 @@ class WalletBackend:
         wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
-                # Extract the receiving address
                 receiving_address = (
-                    f"{wallet_data['receivingAddress']['prefix']}:"
-                    f"{wallet_data['receivingAddress']['payload']}"
+                    f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
                 )
-                # Prepare the parsed data
                 parsed_data = {
                     "mnemonic": wallet_data["mnemonic"],
                     "receiving_address": receiving_address,
@@ -82,10 +80,9 @@ class WalletBackend:
         balance_data = self.run_node_command("getBalance", address)
         if balance_data.get("success"):
             try:
-                balance = balance_data["balance"]
                 parsed_data = {
                     "address": address,
-                    "balance": balance,
+                    "balance": balance_data["balance"],
                 }
                 logger.info(f"Balance retrieved: {parsed_data}")
                 return parsed_data
@@ -103,9 +100,7 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                txid = transaction_data["txid"]
-                logger.info(f"Transaction successful: {txid}")
-                return {"success": True, "txid": txid}
+                return {"success": True, "txid": transaction_data["txid"]}
             except KeyError as e:
                 logger.error(f"Missing key in transaction data: {e}")
                 return {"success": False, "error": "Malformed transaction data"}
@@ -120,12 +115,16 @@ class WalletBackend:
         )
         if transaction_data.get("success"):
             try:
-                txid = transaction_data["txid"]
-                logger.info(f"KRC20 Transaction successful for {token_symbol}: {txid}")
-                return {"success": True, "txid": txid}
+                return {"success": True, "txid": transaction_data["txid"]}
             except KeyError as e:
                 logger.error(f"Missing key in KRC20 transaction data: {e}")
                 return {"success": False, "error": "Malformed KRC20 transaction data"}
         else:
             logger.error(f"Failed to send KRC20 transaction: {transaction_data.get('error')}")
             return {"success": False, "error": transaction_data.get('error')}
+
+# Example usage
+if __name__ == "__main__":
+    wallet_backend = WalletBackend()
+    wallet_data = wallet_backend.create_wallet()
+    print(wallet_data)
