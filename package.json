@@ -1,8 +1,10 @@
 {
   "name": "kasper-agent",
   "version": "1.0.0",
+  "type": "module",  // Enables ES module support
   "description": "Node.js integration for Kasper blockchain using WASM and Telegram bot backend.",
   "main": "node_wasm_handler.js",
+
   "scripts": {
     "start": "node node_wasm_handler.js",
     "test": "echo \"No tests defined\""
