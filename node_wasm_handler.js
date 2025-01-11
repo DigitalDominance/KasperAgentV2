@@ -10,7 +10,6 @@ const {
     DerivationPath,
     NetworkType,
     createTransactions,
-    signTransaction,
     kaspaToSompi,
     initConsolePanicHook,
 } = kaspa;
@@ -27,6 +26,8 @@ const rpc = new RpcClient({
 // Utility to create wallet
 async function createWallet() {
     try {
+        console.log("Creating wallet...");
+
         const mnemonic = Mnemonic.random();
         console.log("Generated Mnemonic:", mnemonic.phrase);
 
@@ -52,7 +53,7 @@ async function createWallet() {
             xPrv: xPrv.intoString("xprv"),
         };
     } catch (err) {
-        console.error("Error creating wallet:", err.message);
+        console.error("Error creating wallet:", err);
         return { success: false, error: err.message };
     }
 }
@@ -60,7 +61,9 @@ async function createWallet() {
 // Get balance for an address
 async function getBalance(address) {
     try {
+        console.log(`Fetching balance for address: ${address}`);
         await rpc.connect();
+
         const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
         await rpc.disconnect();
 
@@ -70,7 +73,7 @@ async function getBalance(address) {
             balance: balances[0]?.amount / 1e8 || 0, // Convert sompi to KAS
         };
     } catch (err) {
-        console.error("Error fetching balance:", err.message);
+        console.error("Error fetching balance:", err);
         return { success: false, error: err.message };
     }
 }
@@ -78,6 +81,7 @@ async function getBalance(address) {
 // Send a transaction
 async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     try {
+        console.log(`Sending transaction from ${fromAddress} to ${toAddress} with amount ${amount}`);
         const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
@@ -104,14 +108,15 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
         await rpc.disconnect();
         return { success: true };
     } catch (err) {
-        console.error("Error sending transaction:", err.message);
+        console.error("Error sending transaction:", err);
         return { success: false, error: err.message };
     }
 }
 
 // Send a KRC20 token transaction
-async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol) {
+async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol = "KASPER") {
     try {
+        console.log(`Sending KRC20 token transaction: ${amount} ${tokenSymbol} from ${fromAddress} to ${toAddress}`);
         const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
@@ -140,7 +145,35 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
         await rpc.disconnect();
         return { success: true };
     } catch (err) {
-        console.error(`Error sending ${tokenSymbol} transaction:`, err.message);
+        console.error(`Error sending ${tokenSymbol} transaction:`, err);
+        return { success: false, error: err.message };
+    }
+}
+
+// Generate multiple receive/change addresses using HD wallet (xPub)
+async function generateAddresses(xPrvStr, accountIndex = 0, count = 10) {
+    try {
+        console.log("Generating addresses...");
+
+        const xpub = await kaspa.PublicKeyGenerator.fromMasterXPrv(xPrvStr, false, BigInt(accountIndex));
+
+        // Generate Receive Addresses
+        let receiveKeys = await xpub.receivePubkeys(0, count);
+        let receiveAddresses = receiveKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
+        console.log("Receive Addresses:", receiveAddresses);
+
+        // Generate Change Addresses
+        let changeKeys = await xpub.changePubkeys(0, count);
+        let changeAddresses = changeKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
+        console.log("Change Addresses:", changeAddresses);
+
+        return {
+            success: true,
+            receiveAddresses,
+            changeAddresses,
+        };
+    } catch (err) {
+        console.error("Error generating addresses:", err);
         return { success: false, error: err.message };
     }
 }
@@ -152,20 +185,28 @@ if (require.main === module) {
     (async () => {
         try {
             let result;
-            if (command === "createWallet") {
-                result = await createWallet();
-            } else if (command === "getBalance") {
-                result = await getBalance(args[0]);
-            } else if (command === "sendTransaction") {
-                result = await sendTransaction(args[0], args[1], args[2], args[3]);
-            } else if (command === "sendKRC20Transaction") {
-                result = await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
-            } else {
-                result = { success: false, error: "Invalid command" };
+            switch (command) {
+                case "createWallet":
+                    result = await createWallet();
+                    break;
+                case "getBalance":
+                    result = await getBalance(args[0]);
+                    break;
+                case "sendTransaction":
+                    result = await sendTransaction(args[0], args[1], args[2], args[3]);
+                    break;
+                case "sendKRC20Transaction":
+                    result = await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
+                    break;
+                case "generateAddresses":
+                    result = await generateAddresses(args[0], args[1] || 0, args[2] || 10);
+                    break;
+                default:
+                    result = { success: false, error: "Invalid command" };
             }
             console.log(JSON.stringify(result, null, 2));
         } catch (e) {
-            console.error(JSON.stringify({ success: false, error: e.message }));
+            console.error("Unexpected error:", e);
         }
     })();
 }
