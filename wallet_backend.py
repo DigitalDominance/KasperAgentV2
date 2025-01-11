@@ -11,53 +11,6 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     def run_node_command(self, command, *args):
-        """Run a Node.js command and return its JSON output."""
-        try:
-            result = subprocess.run(
-                ["node", self.node_script_path, command, *args],
-                capture_output=True,
-                text=True,
-            )
-            # Assume stdout contains valid JSON
-            return json.loads(result.stdout.strip())
-        except json.JSONDecodeError:
-            logger.error(f"Failed to decode JSON from Node.js command '{command}'. Output: {result.stdout}")
-            return {"success": False, "error": "Invalid JSON in Node.js output"}
-        except Exception as e:
-            logger.error(f"Error while running Node.js command '{command}': {e}")
-            return {"success": False, "error": str(e)}
-
-import subprocess
-import json
-import logging
-
-logger = logging.getLogger(__name__)
-
-class WalletBackend:
-    def __init__(self, node_script_path="node_wasm_handler.js"):
-        self.node_script_path = node_script_path
-        
-     def create_wallet(self):
-        """Create a new wallet."""
-        wallet_data = self.run_node_command("createWallet")
-        if wallet_data.get("success"):
-            try:
-                receiving_address = wallet_data["receivingAddress"]
-                change_address = wallet_data["changeAddress"]
-                return {
-                    "success": True,
-                    "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": f"{receiving_address['prefix']}:{receiving_address['payload']}",
-                    "change_address": f"{change_address['prefix']}:{change_address['payload']}",
-                    "private_key": wallet_data["xPrv"],
-                }
-            except KeyError as e:
-                logger.error(f"Malformed wallet data: {e}")
-                return {"success": False, "error": "Incomplete wallet data"}
-        else:
-            return wallet_data
-
-    def run_node_command(self, command, *args):
         """Run a Node.js command and handle the response."""
         try:
             result = subprocess.run(
@@ -83,7 +36,25 @@ class WalletBackend:
             logger.error(f"Error running {command}: {e}")
             return {"success": False, "error": str(e)}
 
-
+    def create_wallet(self):
+        """Create a new wallet."""
+        wallet_data = self.run_node_command("createWallet")
+        if wallet_data.get("success"):
+            try:
+                receiving_address = wallet_data["receivingAddress"]
+                change_address = wallet_data["changeAddress"]
+                return {
+                    "success": True,
+                    "mnemonic": wallet_data["mnemonic"],
+                    "receiving_address": f"{receiving_address['prefix']}:{receiving_address['payload']}",
+                    "change_address": f"{change_address['prefix']}:{change_address['payload']}",
+                    "private_key": wallet_data["xPrv"],
+                }
+            except KeyError as e:
+                logger.error(f"Malformed wallet data: {e}")
+                return {"success": False, "error": "Incomplete wallet data"}
+        else:
+            return wallet_data
 
     def get_balance(self, address):
         """Get the balance of a specific address."""
