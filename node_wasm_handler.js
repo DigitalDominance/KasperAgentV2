@@ -1,34 +1,55 @@
+// Global WebSocket shim for environments without native WebSocket support
+globalThis.WebSocket = require("websocket").w3cwebsocket;
+
+const kaspa = require("./wasm/kaspa");
 const {
     RpcClient,
     Resolver,
-    initConsolePanicHook,
-    PrivateKey,
-    createTransaction,
+    Mnemonic,
+    XPrv,
+    DerivationPath,
+    NetworkType,
+    createTransactions,
     signTransaction,
     kaspaToSompi,
-} = require('./wasm/kaspa');
-
-// Global WebSocket shim for environments without native WebSocket support
-globalThis.WebSocket = require('websocket').w3cwebsocket;
+    initConsolePanicHook,
+} = kaspa;
 
 // Enable console panic hooks for debugging
 initConsolePanicHook();
 
-// Initialize RPC client with integrated resolver for public nodes
+// Initialize RPC client with the integrated public URLs
 const rpc = new RpcClient({
     resolver: new Resolver(),
-    networkId: "mainnet", // Specify the network ("mainnet" or "testnet-<number>")
+    networkId: "mainnet",
 });
 
-// Create a new wallet
+// Utility to create wallet
 async function createWallet() {
     try {
-        const privateKey = new PrivateKey();
-        const address = privateKey.toKeypair().toAddress("mainnet");
+        const mnemonic = Mnemonic.random();
+        console.log("Generated Mnemonic:", mnemonic.phrase);
+
+        const seed = mnemonic.toSeed();
+        const xPrv = new XPrv(seed);
+
+        const receivePath = "m/44'/111111'/0'/0/0";
+        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
+        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
+
+        const changePath = "m/44'/111111'/0'/1/0";
+        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
+        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
+
+        console.log("Receiving Address:", receiveAddress);
+        console.log("Change Address:", changeAddress);
+
         return {
             success: true,
-            address,
-            privateKey: privateKey.toString(),
+            mnemonic: mnemonic.phrase,
+            receivingAddress: receiveAddress,
+            changeAddress,
+            xPrv: xPrv.intoString("xprv"),
         };
     } catch (err) {
         console.error("Error creating wallet:", err.message);
@@ -36,51 +57,52 @@ async function createWallet() {
     }
 }
 
-// Get the balance of an address
+// Get balance for an address
 async function getBalance(address) {
     try {
         await rpc.connect();
-        const response = await rpc.getBalancesByAddresses({ addresses: [address] });
-        const balance = response.balances[0]?.balance || 0n;
+        const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
         await rpc.disconnect();
-        return { success: true, balance: balance / 1e8 }; // Convert sompi to KAS
+
+        return {
+            success: true,
+            address,
+            balance: balances[0]?.amount / 1e8 || 0, // Convert sompi to KAS
+        };
     } catch (err) {
         console.error("Error fetching balance:", err.message);
         return { success: false, error: err.message };
     }
 }
 
-// Send a KAS transaction
-async function sendTransaction(fromPrivateKeyString, toAddress, amountInKAS) {
+// Send a transaction
+async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     try {
-        const privateKey = PrivateKey.fromString(fromPrivateKeyString);
-        const fromAddress = privateKey.toKeypair().toAddress("mainnet");
-
+        const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
-        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
 
-        if (utxos.length === 0) {
-            throw new Error("No UTXOs available for the source address.");
+        const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
+
+        if (!entries.length) {
+            console.error("No UTXOs found for the address");
+            return { success: false, error: "No UTXOs available" };
         }
 
-        const totalAmount = kaspaToSompi(amountInKAS);
+        const { transactions } = await createTransactions({
+            entries,
+            outputs: [{ address: toAddress, amount: kaspaToSompi(amount) }],
+            priorityFee: 0n,
+            changeAddress: fromAddress,
+        });
 
-        // Prepare transaction outputs
-        const outputs = [
-            { address: toAddress, amount: totalAmount },
-        ];
+        for (const pending of transactions) {
+            await pending.sign([privateKey]);
+            const txid = await pending.submit(rpc);
+            console.log("Transaction submitted, txid:", txid);
+        }
 
-        const changeAddress = fromAddress;
-        const transaction = createTransaction(utxos, outputs, 0n, "", 1);
-
-        // Sign the transaction
-        const signedTransaction = signTransaction(transaction, [privateKey], true);
-
-        // Submit the signed transaction
-        const result = await rpc.submitTransaction({ transaction: signedTransaction });
         await rpc.disconnect();
-
-        return { success: true, transactionId: result.transactionId };
+        return { success: true };
     } catch (err) {
         console.error("Error sending transaction:", err.message);
         return { success: false, error: err.message };
@@ -88,43 +110,42 @@ async function sendTransaction(fromPrivateKeyString, toAddress, amountInKAS) {
 }
 
 // Send a KRC20 token transaction
-async function sendKRC20Transaction(fromPrivateKeyString, toAddress, amountInTokens, tokenSymbol = "KASPER") {
+async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol) {
     try {
-        const privateKey = PrivateKey.fromString(fromPrivateKeyString);
-        const fromAddress = privateKey.toKeypair().toAddress("mainnet");
-
+        const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
-        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
 
-        if (utxos.length === 0) {
-            throw new Error("No UTXOs available for the source address.");
+        const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
+
+        if (!entries.length) {
+            console.error("No UTXOs found for the address");
+            return { success: false, error: "No UTXOs available" };
         }
 
-        const totalAmount = kaspaToSompi(amountInTokens);
+        const payload = `krc20|${tokenSymbol}|${kaspaToSompi(amount)}`;
+        const { transactions } = await createTransactions({
+            entries,
+            outputs: [{ address: toAddress, amount: 0n }], // Send tokens via payload
+            priorityFee: 0n,
+            payload,
+            changeAddress: fromAddress,
+        });
 
-        // Prepare KRC20 transaction outputs
-        const outputs = [
-            { address: toAddress, amount: totalAmount, tokenSymbol },
-        ];
+        for (const pending of transactions) {
+            await pending.sign([privateKey]);
+            const txid = await pending.submit(rpc);
+            console.log(`KRC20 Transaction submitted, txid: ${txid}`);
+        }
 
-        const changeAddress = fromAddress;
-        const transaction = createTransaction(utxos, outputs, 0n, "", 1);
-
-        // Sign the transaction
-        const signedTransaction = signTransaction(transaction, [privateKey], true);
-
-        // Submit the signed transaction
-        const result = await rpc.submitTransaction({ transaction: signedTransaction });
         await rpc.disconnect();
-
-        return { success: true, transactionId: result.transactionId };
+        return { success: true };
     } catch (err) {
         console.error(`Error sending ${tokenSymbol} transaction:`, err.message);
         return { success: false, error: err.message };
     }
 }
 
-// Command-line interface for Python
+// Command-line interface
 if (require.main === module) {
     const [command, ...args] = process.argv.slice(2);
 
@@ -136,9 +157,9 @@ if (require.main === module) {
             } else if (command === "getBalance") {
                 result = await getBalance(args[0]);
             } else if (command === "sendTransaction") {
-                result = await sendTransaction(args[0], args[1], parseFloat(args[2]));
+                result = await sendTransaction(args[0], args[1], args[2], args[3]);
             } else if (command === "sendKRC20Transaction") {
-                result = await sendKRC20Transaction(args[0], args[1], parseFloat(args[2]), args[3]);
+                result = await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
             } else {
                 result = { success: false, error: "Invalid command" };
             }
