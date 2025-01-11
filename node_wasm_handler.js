@@ -38,8 +38,7 @@ async function createWallet() {
         const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
         const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
 
-        // Return only JSON
-        return JSON.stringify({
+        return {
             success: true,
             mnemonic: mnemonic.phrase,
             receivingAddress: {
@@ -53,14 +52,12 @@ async function createWallet() {
                 payload: changeAddress.payload,
             },
             xPrv: xPrv.intoString("xprv"),
-        });
+        };
     } catch (err) {
-        // Return error as JSON
-        return JSON.stringify({ success: false, error: err.message });
+        console.error("Error creating wallet:", err);
+        return { success: false, error: err.message };
     }
 }
-
-console.log(await createWallet());
 
 // Get balance for an address
 async function getBalance(address) {
@@ -85,14 +82,11 @@ async function getBalance(address) {
 // Send a transaction
 async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
     try {
-        console.log(`Sending transaction from ${fromAddress} to ${toAddress} with amount ${amount}`);
         const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-
         if (!entries.length) {
-            console.error("No UTXOs found for the address");
             return { success: false, error: "No UTXOs available" };
         }
 
@@ -120,21 +114,18 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
 // Send a KRC20 token transaction
 async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol = "KASPER") {
     try {
-        console.log(`Sending KRC20 token transaction: ${amount} ${tokenSymbol} from ${fromAddress} to ${toAddress}`);
         const privateKey = kaspa.PrivateKey.fromString(privateKeyStr);
         await rpc.connect();
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
-
         if (!entries.length) {
-            console.error("No UTXOs found for the address");
             return { success: false, error: "No UTXOs available" };
         }
 
         const payload = `krc20|${tokenSymbol}|${kaspaToSompi(amount)}`;
         const { transactions } = await createTransactions({
             entries,
-            outputs: [{ address: toAddress, amount: 0n }], // Send tokens via payload
+            outputs: [{ address: toAddress, amount: 0n }],
             priorityFee: 0n,
             payload,
             changeAddress: fromAddress,
@@ -157,19 +148,13 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
 // Generate multiple receive/change addresses using HD wallet (xPub)
 async function generateAddresses(xPrvStr, accountIndex = 0, count = 10) {
     try {
-        console.log("Generating addresses...");
-
         const xpub = await kaspa.PublicKeyGenerator.fromMasterXPrv(xPrvStr, false, BigInt(accountIndex));
 
-        // Generate Receive Addresses
-        let receiveKeys = await xpub.receivePubkeys(0, count);
-        let receiveAddresses = receiveKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
-        console.log("Receive Addresses:", receiveAddresses);
+        const receiveKeys = await xpub.receivePubkeys(0, count);
+        const receiveAddresses = receiveKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
 
-        // Generate Change Addresses
-        let changeKeys = await xpub.changePubkeys(0, count);
-        let changeAddresses = changeKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
-        console.log("Change Addresses:", changeAddresses);
+        const changeKeys = await xpub.changePubkeys(0, count);
+        const changeAddresses = changeKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
 
         return {
             success: true,
