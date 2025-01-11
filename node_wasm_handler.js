@@ -14,16 +14,47 @@ const {
     initConsolePanicHook,
 } = kaspa;
 
+const { MongoClient } = require("mongodb");
+
 // Enable console panic hooks for debugging
 initConsolePanicHook();
 
-// Initialize RPC client with the integrated public URLs
+// Initialize RPC client
 const rpc = new RpcClient({
     resolver: new Resolver(),
     networkId: "mainnet",
 });
 
-// Utility to create wallet
+// MongoDB connection setup
+const mongoUri = process.env.MONGODB_URI;
+let db;
+
+async function connectToDatabase() {
+    try {
+        const client = new MongoClient(mongoUri);
+        await client.connect();
+        db = client.db("kasperdb");
+        console.log("Connected to MongoDB.");
+    } catch (err) {
+        console.error("Error connecting to MongoDB:", err);
+    }
+}
+
+// Retrieve user's private key from the database
+async function getUserPrivateKey(userId) {
+    try {
+        const user = await db.collection("users").findOne({ user_id: userId });
+        if (!user || !user.private_key) {
+            throw new Error(`Private key not found for user_id: ${userId}`);
+        }
+        return user.private_key;
+    } catch (err) {
+        console.error(`Error retrieving private key for user_id ${userId}:`, err);
+        throw err;
+    }
+}
+
+// Utility to create a new wallet
 async function createWallet() {
     try {
         const mnemonic = Mnemonic.random();
@@ -72,24 +103,21 @@ async function getBalance(address) {
 }
 
 // Send a KAS transaction
-async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
+async function sendTransaction(userId, fromAddress, toAddress, amount) {
     try {
-        const privateKey = new kaspa.PrivateKey(privateKeyStr);
-        const sourceAddress = privateKey.toKeypair().toAddress("mainnet"); // Adjust networkId if necessary
-        console.info(`Source address: ${sourceAddress}`);
+        const privateKeyStr = await getUserPrivateKey(userId);
+        const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
 
         const { isSynced } = await rpc.getServerInfo();
         if (!isSynced) {
-            console.error("Node is not synced. Please wait.");
-            await rpc.disconnect();
-            return { success: false, error: "Node is not synced" };
+            throw new Error("Node is not synced. Please wait.");
         }
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
         if (!entries.length) {
-            return { success: false, error: "No UTXOs available" };
+            throw new Error("No UTXOs available.");
         }
 
         entries.sort((a, b) => a.amount > b.amount ? 1 : -1); // Sort UTXOs by amount
@@ -102,9 +130,7 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
         });
 
         for (const pending of transactions) {
-            console.log("Signing transaction with private key...");
             await pending.sign([privateKey]);
-            console.log("Submitting transaction...");
             const txid = await pending.submit(rpc);
             console.log("Transaction submitted. TXID:", txid);
         }
@@ -118,24 +144,21 @@ async function sendTransaction(fromAddress, toAddress, amount, privateKeyStr) {
 }
 
 // Send a KRC20 token transaction
-async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeyStr, tokenSymbol = "KASPER") {
+async function sendKRC20Transaction(userId, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
-        const privateKey = new kaspa.PrivateKey(privateKeyStr);
-        const sourceAddress = privateKey.toKeypair().toAddress("mainnet");
-        console.info(`Source address: ${sourceAddress}`);
+        const privateKeyStr = await getUserPrivateKey(userId);
+        const privateKey = PrivateKey.fromString(privateKeyStr);
 
         await rpc.connect();
 
         const { isSynced } = await rpc.getServerInfo();
         if (!isSynced) {
-            console.error("Node is not synced. Please wait.");
-            await rpc.disconnect();
-            return { success: false, error: "Node is not synced" };
+            throw new Error("Node is not synced. Please wait.");
         }
 
         const { entries } = await rpc.getUtxosByAddresses([fromAddress]);
         if (!entries.length) {
-            return { success: false, error: "No UTXOs available" };
+            throw new Error("No UTXOs available.");
         }
 
         entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
@@ -150,9 +173,7 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
         });
 
         for (const pending of transactions) {
-            console.log("Signing KRC20 transaction...");
             await pending.sign([privateKey]);
-            console.log("Submitting KRC20 transaction...");
             const txid = await pending.submit(rpc);
             console.log(`KRC20 Transaction submitted. TXID: ${txid}`);
         }
@@ -165,34 +186,14 @@ async function sendKRC20Transaction(fromAddress, toAddress, amount, privateKeySt
     }
 }
 
-// Generate multiple receive/change addresses using HD wallet (xPub)
-async function generateAddresses(xPrvStr, accountIndex = 0, count = 10) {
-    try {
-        const xpub = await kaspa.PublicKeyGenerator.fromMasterXPrv(xPrvStr, false, BigInt(accountIndex));
-
-        const receiveKeys = await xpub.receivePubkeys(0, count);
-        const receiveAddresses = receiveKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
-
-        const changeKeys = await xpub.changePubkeys(0, count);
-        const changeAddresses = changeKeys.map(key => kaspa.createAddress(key, NetworkType.Mainnet).toString());
-
-        return {
-            success: true,
-            receiveAddresses,
-            changeAddresses,
-        };
-    } catch (err) {
-        console.error("Error generating addresses:", err);
-        return { success: false, error: err.message };
-    }
-}
-
 // Command-line interface
 if (require.main === module) {
     const [command, ...args] = process.argv.slice(2);
 
     (async () => {
         try {
+            await connectToDatabase();
+
             let result;
             switch (command) {
                 case "createWallet":
@@ -206,9 +207,6 @@ if (require.main === module) {
                     break;
                 case "sendKRC20Transaction":
                     result = await sendKRC20Transaction(args[0], args[1], args[2], args[3], args[4]);
-                    break;
-                case "generateAddresses":
-                    result = await generateAddresses(args[0], args[1] || 0, args[2] || 10);
                     break;
                 default:
                     result = { success: false, error: "Invalid command" };
