@@ -1,3 +1,4 @@
+import WebSocket from 'websocket';
 
 (async () => {
     const kaspa = await import('./wasm/kaspa.js');
@@ -8,7 +9,6 @@
         networkId: "mainnet",
     });
 
-import WebSocket from 'websocket';
 
 // Global WebSocket shim
 globalThis.WebSocket = WebSocket.w3cwebsocket;
