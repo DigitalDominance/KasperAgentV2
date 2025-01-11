@@ -127,7 +127,7 @@ async def topup_command(update, context):
     await update.message.reply_text(f"👻 Please deposit KASPER to the following address: {wallet_address}.\n\nThe top-up process will start automatically once the deposit is detected.")
 
     start_time = datetime.utcnow()
-    max_wait_time = timedelta(minutes=10)  # Timeout after 10 minutes
+    max_wait_time = timedelta(minutes=10)
 
     try:
         async with httpx.AsyncClient() as client:
@@ -144,8 +144,7 @@ async def topup_command(update, context):
 
                     if kasper_balance > 0:
                         logger.info(f"Detected balance: {kasper_balance} sompi")
-                        # Process transactions
-                        transaction_result = await wallet.send_krc20_transaction(
+                        transaction_result = wallet.send_krc20_transaction(
                             from_address=wallet_address,
                             to_address=MAIN_WALLET_ADDRESS,
                             amount=kasper_balance,
@@ -157,7 +156,6 @@ async def topup_command(update, context):
                             return
 
                         logger.info("Transaction successful, sending KAS for gas fees...")
-                        # Send 20 KAS for gas fees
                         await wallet.send_transaction(
                             from_address=MAIN_WALLET_ADDRESS,
                             to_address=wallet_address,
@@ -177,6 +175,7 @@ async def topup_command(update, context):
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+
 
 # /balance Command Handler
 async def balance_command(update, context):
