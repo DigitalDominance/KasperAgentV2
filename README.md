@@ -25,7 +25,7 @@ KasperAI is a Telegram bot that integrates:
 - `main.py`: Core bot logic.
 - `db_manager.py`: MongoDB management.
 - `wallet_backend.py`: Blockchain wallet integration.
-- `wallet/`: Contains Kaspa wallet files (e.g., `kaspa.js`, `kaspa_bg.wasm`).
+- `wasm/`: Contains Kaspa wallet files (e.g., `kaspa.js`, `kaspa_bg.wasm`).
 
 ## Future Improvements
 - Add notifications for successful transactions.
