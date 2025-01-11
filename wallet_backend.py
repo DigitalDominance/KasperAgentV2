@@ -3,7 +3,7 @@ import subprocess
 import json
 
 class WalletBackend:
-    def __init__(self, node_script_path="wasm_handler.js"):
+    def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
 
     def run_node_command(self, command, *args):
