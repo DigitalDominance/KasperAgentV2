@@ -370,6 +370,10 @@ async def topup_command(update, context):
             if not wallet_address:
                 await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
                 return
+                
+        except Exception as e:
+            logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
+            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
             # Cancel any active scan
             if "scan_task" in context.chat_data:
@@ -433,9 +437,7 @@ async def topup_command(update, context):
                 logger.error(f"Error processing endtopup_command: {process_error}", exc_info=True)
                 await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
 
-        except Exception as e:
-            logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
-            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
     # /text Command Handler for AI
     async def handle_text_message(update, context):
