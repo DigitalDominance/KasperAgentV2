@@ -23,7 +23,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Retrieve environment variables
-const PORT = process.env.PORT;
+const PORT = process.env.PORT; // No need for || 3000 here, Heroku will provide the PORT
 const API_KEY = process.env.API_KEY;
 
 // Middleware to validate API key
@@ -129,4 +129,13 @@ app.post("/execute", async (req, res) => {
 });
 
 // Start the server
-app.listen(PORT, () => console.log(`Node.js WASM server running on port ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Node.js WASM server running on port ${PORT}`));
+
+// Add a handler for SIGTERM to gracefully shut down the server
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
+});
