@@ -9,7 +9,7 @@ import httpx
 from pydub import AudioSegment
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from db_manager import DBManager
-from wallet_backend import DBManager
+from wallet_backend import walletBackend
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
