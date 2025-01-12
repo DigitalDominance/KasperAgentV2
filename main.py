@@ -242,11 +242,11 @@ async def topup_command(update, context):
     rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
     message = await update.message.reply_text(
-        f"👻 Spook-tacular Top-Up!\n\n"
+        f"👻 *Spook-tacular Top-Up!*\n\n"
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
-        "✅ After depositing, finalize the process by using the `/endtopup` command.",
+        "✅ After deposits are credited, finalize the process by using the `/endtopup` command.",
         parse_mode="Markdown",
     )
 
@@ -271,11 +271,11 @@ async def topup_command(update, context):
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
-                            text=(f"👻 Spook-tacular Top-Up!\n\n"
+                            text=(f"👻 *Spook-tacular Top-Up!*\n\n"
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-                                  "✅ After depositing, finalize the process by using the `/endtopup` command."),
+                                  "✅ After deposits are credited, finalize the process by using the `/endtopup` command."),
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
@@ -393,7 +393,7 @@ async def endtopup_command(update, context):
                     parse_mode="Markdown"
                 )
             else:
-                await update.message.reply_text("❌ No new KASPER deposits found.")
+                await update.message.reply_text("✅ No remaining deposits found.")
     except Exception as e:
         logger.error(f"Error in endtopup_command: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
