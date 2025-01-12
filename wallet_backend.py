@@ -11,29 +11,39 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     async def run_node_command(self, command, *args):
-        """Run a Node.js command asynchronously and return its output."""
+        """Run a Node.js command asynchronously with a timeout."""
         try:
+            # Start the subprocess
+            logger.info(f"Running Node.js command: {command} with args: {args}")
             process = await asyncio.create_subprocess_exec(
                 "node", self.node_script_path, command, *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await process.communicate()
+
+            try:
+                # Wait for the process to complete with a timeout
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+            except asyncio.TimeoutError:
+                logger.error(f"Node.js command '{command}' timed out. Terminating process.")
+                process.kill()
+                await process.wait()
+                return {"success": False, "error": "Subprocess timed out"}
 
             stdout = stdout.decode().strip()
             stderr = stderr.decode().strip()
 
-            # Log the output for debugging
+            # Log outputs
             if stdout:
-                logger.info(f"[Node.js stdout - {command}]: {stdout}")
+                logger.info(f"Node.js stdout for {command}: {stdout}")
             if stderr:
-                logger.error(f"[Node.js stderr - {command}]: {stderr}")
+                logger.error(f"Node.js stderr for {command}: {stderr}")
 
-            # Parse the JSON output
+            # Parse JSON output
             try:
                 return json.loads(stdout)
             except json.JSONDecodeError:
-                logger.error(f"Failed to parse JSON from stdout: {stdout}")
+                logger.error(f"Invalid JSON output: {stdout}")
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
 
         except Exception as e:
@@ -54,7 +64,7 @@ class WalletBackend:
             }
         logger.error(f"Failed to create wallet: {result.get('error', 'Unknown error')}")
         return {"success": False, "error": result.get("error", "Unknown error")}
-
+        
     async def get_balance(self, address):
         """Get the balance of a specific address."""
         logger.info(f"Fetching balance for address: {address}")
