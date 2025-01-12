@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from collections import defaultdict
 from io import BytesIO
+from rate_limit import rate_limit
 
 import httpx
 from pydub import AudioSegment
