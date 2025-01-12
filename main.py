@@ -75,6 +75,83 @@ async def update_market_data():
         await fetch_kasper_market_data()
         await asyncio.sleep(300)  # 5 minutes
 
+# main.py
+import logging
+import asyncio
+from datetime import datetime, timedelta
+from collections import defaultdict
+from io import BytesIO
+from typing import Optional, List
+
+import httpx
+from pydub import AudioSegment
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    filters
+)
+
+from db_manager import DBManager
+from wallet_backend import WalletBackend
+import config
+
+# Logging setup
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO  # Change to DEBUG for more detailed logs
+)
+logger = logging.getLogger(__name__)
+
+# Initialize dependencies
+db = DBManager()
+wallet_backend = WalletBackend()
+user_locks = defaultdict(asyncio.Lock)
+USER_MESSAGE_LIMITS = defaultdict(lambda: {
+    "count": 0,
+    "reset_time": datetime.utcnow() + timedelta(hours=24),
+    "last_message_time": None
+})
+market_data_cache = {
+    "price": "N/A",
+    "market_cap": "N/A",
+    "daily_volume": "N/A"
+}
+
+async def fetch_kasper_market_data():
+    """Fetch market data for Kasper from CoinGecko."""
+    global market_data_cache
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        "ids": "kasper",
+        "vs_currencies": "usd",
+        "include_market_cap": "true",
+        "include_24hr_vol": "true"
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+
+            kasper_data = data.get("kasper", {})
+            market_data_cache = {
+                "price": f"${kasper_data.get('usd', 'N/A')}",
+                "market_cap": f"${kasper_data.get('usd_market_cap', 'N/A')}",
+                "daily_volume": f"${kasper_data.get('usd_24h_vol', 'N/A')}"
+            }
+            logger.info(f"Updated market data: {market_data_cache}")
+        except Exception as e:
+            logger.error(f"Error fetching Kasper market data: {e}", exc_info=True)
+            market_data_cache = {"price": "N/A", "market_cap": "N/A", "daily_volume": "N/A"}
+
+async def update_market_data():
+    """Continuously update market data every 5 minutes."""
+    while True:
+        await fetch_kasper_market_data()
+        await asyncio.sleep(300)  # 5 minutes
+
 def get_kasper_persona():
     """Define Kasper's persona for the AI responses."""
     return (
