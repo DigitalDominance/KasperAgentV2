@@ -163,7 +163,7 @@ async def start_command(update, context):
                 db.add_user(
                     user_id,
                     credits=3,
-                    wallet_address=wallet_data["receiving_address"],
+                    wallet=wallet_data["receiving_address"],
                     private_key=wallet_data["private_key"],
                     mnemonic=wallet_data["mnemonic"]
                 )
