@@ -14,7 +14,8 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
+    CallbackContext,
 )
 
 from db_manager import DBManager
@@ -49,7 +50,8 @@ market_data_cache = {
     "daily_volume": "N/A"
 }
 
-async def fetch_kasper_market_data():
+async def fetch_kasper_market_data(context: CallbackContext):
+    """Fetches Kasper market data and updates the cache."""
     global market_data_cache
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
@@ -75,11 +77,6 @@ async def fetch_kasper_market_data():
         except Exception as e:
             logger.error(f"Error fetching Kasper market data: {e}", exc_info=True)
             market_data_cache = {"price": "N/A", "market_cap": "N/A", "daily_volume": "N/A"}
-
-async def update_market_data():
-    while True:
-        await fetch_kasper_market_data()
-        await asyncio.sleep(300)  # Update every 5 minutes
 
 def get_kasper_persona():
     return (
@@ -251,7 +248,6 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
 
-        # Update field name from 'wallet' to 'receiving_address'
         receiving_address = user.get("receiving_address")
         if not receiving_address:
             await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
@@ -269,116 +265,81 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
-        # Cancel any previous scan
-        if "scan_task" in context.chat_data:
-            old_task = context.chat_data["scan_task"]
-            if not old_task.done():
-                old_task.cancel()
-                logger.info(f"Cancelled previous scan task for user {user_id}.")
+        # Schedule the end of the top-up process after 5 minutes
+        context.job_queue.run_once(endtopup_job, when=300, data={"user_id": user_id, "receiving_address": receiving_address})
 
-        # Define the new scan task
-        async def scan_with_real_time_processing():
-            try:
-                end_time = datetime.utcnow() + timedelta(minutes=5)
-                async with httpx.AsyncClient() as client:
-                    while datetime.utcnow() < end_time:
-                        remaining = end_time - datetime.utcnow()
-                        minutes, seconds = divmod(int(remaining.total_seconds()), 60)
-                        countdown_text = f"⏳ Remaining Time: {minutes}:{seconds:02d}"
-
-                        # Update countdown message
-                        try:
-                            await context.bot.edit_message_text(
-                                chat_id=update.effective_chat.id,
-                                message_id=message.message_id,
-                                text=(
-                                    f"👻 *Spook-tacular Top-Up!*\n\n"
-                                    f"🔑 Deposit Address: `{receiving_address}`\n"
-                                    f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-                                    f"{countdown_text}\n\n"
-                                    "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n"
-                                    "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00."
-                                ),
-                                parse_mode="Markdown",
-                            )
-                        except Exception as edit_error:
-                            logger.error(f"Error updating countdown: {edit_error}", exc_info=True)
-
-                        # Fetch transaction data
-                        try:
-                            response = await client.get(
-                                f"{KRC20_API_BASE_URL}/oplist",
-                                params={"address": receiving_address, "tick": "KASPER"}
-                            )
-                            response.raise_for_status()
-                            data = response.json()
-                            logger.info(f"API Response for oplist: {data}")
-                        except Exception as api_error:
-                            logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
-                            await context.bot.send_message(
-                                chat_id=update.effective_chat.id,
-                                text="❌ Error fetching transaction data. Please try again later."
-                            )
-                            break  # Exit the scan loop on API failure
-
-                        # Process new transactions
-                        try:
-                            processed_hashes = await db.get_processed_hashes(user_id)
-                            for tx in data.get("result", []):
-                                logger.info(f"Processing transaction: {tx}")
-
-                                hash_rev = tx.get("hashRev")
-                                if hash_rev and hash_rev not in processed_hashes:
-                                    kasper_amount = int(tx.get("amt", 0))
-                                    credits = kasper_amount // CREDIT_CONVERSION_RATE
-
-                                    if credits > 0:
-                                        # Save processed hash and update credits atomically
-                                        await db.add_processed_hash(user_id, hash_rev)
-                                        new_credits = user.get("credits", 0) + credits
-                                        await db.update_user_credits(user_id, new_credits)
-
-                                        # Notify user of successful deposit
-                                        await context.bot.send_message(
-                                            chat_id=update.effective_chat.id,
-                                            text=(
-                                                f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
-                                                f"to your account! Your spectral wallet is growing! 🎉\n\n"
-                                                "👻 Use /balance to see your updated credits!"
-                                            ),
-                                            parse_mode="Markdown"
-                                        )
-                        except Exception as process_error:
-                            logger.error(f"Error processing transactions: {process_error}", exc_info=True)
-
-                        await asyncio.sleep(5)  # Update every 5 seconds
-
-                    # Notify when the scan times out
-                    await context.bot.edit_message_text(
-                        chat_id=update.effective_chat.id,
-                        message_id=message.message_id,
-                        text=(
-                            "👻 *Top-Up Time Expired!*\n\n"
-                            "The scan has timed out. Please use /topup to restart."
-                        ),
-                        parse_mode="Markdown"
-                    )
-            except asyncio.CancelledError:
-                logger.info(f"Scan task canceled for user {user_id}.")
-            except Exception as e:
-                logger.error(f"Error during scan: {e}", exc_info=True)
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="❌ An unexpected error occurred during the top-up process. Please try again later."
-                )
-
-        # Start the new scan task
-        context.chat_data["scan_task"] = asyncio.create_task(scan_with_real_time_processing())
-        logger.info(f"Started new scan task for user {user_id}.")
+        logger.info(f"Initiated top-up process for user {user_id}.")
 
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
+async def endtopup_job(context: CallbackContext):
+    """Automatically ends the top-up process after a specified time."""
+    job = context.job
+    user_id = job.data["user_id"]
+    receiving_address = job.data["receiving_address"]
+
+    logger.info(f"Ending top-up process for user {user_id}.")
+
+    try:
+        # Fetch transaction data
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{KRC20_API_BASE_URL}/oplist",
+                params={"address": receiving_address, "tick": "KASPER"}
+            )
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"API Response for oplist: {data}")
+
+        # Calculate credits from new transactions
+        total_credits = 0
+        processed_hashes = await db.get_processed_hashes(user_id)
+        for tx in data.get("result", []):
+            logger.info(f"Processing transaction: {tx}")
+
+            hash_rev = tx.get("hashRev")
+            if hash_rev and hash_rev not in processed_hashes:
+                kasper_amount = int(tx.get("amt", 0))
+                credits = kasper_amount // CREDIT_CONVERSION_RATE
+                total_credits += credits
+
+                # Save processed hash
+                await db.add_processed_hash(user_id, hash_rev)
+
+        if total_credits > 0:
+            # Update user's credits
+            new_credits = user.get("credits", 0) + total_credits
+            await db.update_user_credits(user_id, new_credits)
+            # Notify user of successful deposit
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                    "👻 Use /balance to see your updated credits!"
+                ),
+                parse_mode="Markdown"
+            )
+            logger.info(f"User {user_id} credits updated by {total_credits} credits.")
+        else:
+            # Notify user that no new deposits were found
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=(
+                    "❌ *Top-Up Time Expired!*\n\n"
+                    "No new KASPER deposits were detected during the top-up period. Please use /topup to try again."
+                ),
+                parse_mode="Markdown"
+            )
+            logger.info(f"No new deposits found for user {user_id} during top-up.")
+
+    except Exception as e:
+        logger.error(f"Error in endtopup_job for user {user_id}: {e}", exc_info=True)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="❌ An unexpected error occurred during the top-up process. Please try again later."
+        )
 
 # /endtopup Command Handler
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -395,17 +356,6 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not receiving_address:
             await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
             return
-
-        # Cancel any active scan
-        if "scan_task" in context.chat_data:
-            scan_task = context.chat_data["scan_task"]
-            if not scan_task.done():
-                scan_task.cancel()
-                try:
-                    await scan_task
-                except asyncio.CancelledError:
-                    logger.info(f"Scan task successfully cancelled for user {user_id}.")
-            del context.chat_data["scan_task"]
 
         # Fetch transaction data
         async with httpx.AsyncClient() as client:
@@ -436,6 +386,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Update user's credits
             new_credits = user.get("credits", 0) + total_credits
             await db.update_user_credits(user_id, new_credits)
+            # Notify user of successful deposit
             await update.message.reply_text(
                 f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
                 "👻 Use /balance to see your updated credits!",
@@ -443,7 +394,11 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             logger.info(f"User {user_id} credits updated by {total_credits} credits.")
         else:
-            await update.message.reply_text("❌ No new KASPER deposits found.")
+            # Notify user that no new deposits were found
+            await update.message.reply_text(
+                "❌ No new KASPER deposits found.",
+                parse_mode="Markdown"
+            )
             logger.info(f"No new deposits found for user {user_id}.")
 
     except Exception as e:
@@ -495,20 +450,14 @@ async def main_async():
     application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    # Start background task
-    background_task = asyncio.create_task(update_market_data())
-    logger.info("🚀 Starting Kasper AI Bot...")
+    # Schedule periodic market data updates using JobQueue
+    application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
 
+    logger.info("🚀 Starting Kasper AI Bot...")
     try:
         await application.run_polling()
     finally:
         logger.info("Shutting down...")
-        # Cancel background task
-        background_task.cancel()
-        try:
-            await background_task
-        except asyncio.CancelledError:
-            logger.info("Background task cancelled.")
         # Close the database connection
         await db.close_connection()
         logger.info("Bot shutdown complete.")
