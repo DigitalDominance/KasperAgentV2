@@ -384,34 +384,34 @@ async def endtopup_command(update, context):
                     chat_id=update.effective_chat.id,
                     text="❌ Error fetching transaction data. Please try again later."
                 )
-                return
+                return  # Properly exit the function after handling the error
 
-            # Calculate credits from new transactions
-            total_credits = 0
-            processed_hashes = await db.get_processed_hashes(user_id)
-            for tx in data.get("result", []):
-                logger.debug(f"Processing transaction: {tx}")
+        # Calculate credits from new transactions
+        total_credits = 0
+        processed_hashes = await db.get_processed_hashes(user_id)
+        for tx in data.get("result", []):
+            logger.debug(f"Processing transaction: {tx}")
 
-                hash_rev = tx.get("hashRev")
-                if hash_rev and hash_rev not in processed_hashes:
-                    kasper_amount = int(tx.get("amt", 0))
-                    credits = kasper_amount // config.CREDIT_CONVERSION_RATE
-                    if credits > 0:
-                        total_credits += credits
+            hash_rev = tx.get("hashRev")
+            if hash_rev and hash_rev not in processed_hashes:
+                kasper_amount = int(tx.get("amt", 0))
+                credits = kasper_amount // config.CREDIT_CONVERSION_RATE
+                if credits > 0:
+                    total_credits += credits
 
-                        # Save processed hash and update credits atomically
-                        await db.add_processed_hash(user_id, hash_rev)
-                        new_credits = user.get("credits", 0) + credits
-                        await db.update_user_credits(user_id, new_credits)
+                    # Save processed hash and update credits atomically
+                    await db.add_processed_hash(user_id, hash_rev)
+                    new_credits = user.get("credits", 0) + credits
+                    await db.update_user_credits(user_id, new_credits)
 
-            if total_credits > 0:
-                await update.message.reply_text(
-                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                    "👻 Use /balance to see your updated credits!",
-                    parse_mode="Markdown"
-                )
-            else:
-                await update.message.reply_text("✅ No remaining deposits found.")
+        if total_credits > 0:
+            await update.message.reply_text(
+                f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                "👻 Use /balance to see your updated credits!",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text("✅ No remaining deposits found.")
 
     except Exception as e:
         logger.error(f"Error in /endtopup command for user {user_id}: {e}", exc_info=True)
