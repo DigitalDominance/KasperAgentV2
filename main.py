@@ -275,7 +275,7 @@ async def topup_command(update, context):
                                 parse_mode="Markdown"
                             )
 
-                    await asyncio.sleep(5)  # Update every 5 seconds
+                    await asyncio.sleep(2)  # Update every 5 seconds
 
                 # Notify when the scan times out
                 await context.bot.edit_message_text(
