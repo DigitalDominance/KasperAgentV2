@@ -1,11 +1,13 @@
-# db_manager.py
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, ValidationError
+from pymongo import MongoClient, errors
+from pymongo.collection import ReturnDocument
+from motor.motor_asyncio import AsyncIOMotorClient  # Ensure Motor is used for async operations
+from pydantic import BaseModel, Field, ValidationError  # Added ValidationError import
 from typing import Optional, List
 import logging
 import os
 from datetime import datetime
-import asyncio
+import asyncio  # Import asyncio
+
 # Set up logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,7 +34,7 @@ class DBManager:
             
             logger.info(f"Connecting to MongoDB at: {mongo_uri}")
             
-            # Initialize AsyncIOMotorClient
+            # Initialize AsyncIOMotorClient for asynchronous operations
             self.client = AsyncIOMotorClient(
                 mongo_uri,
                 serverSelectionTimeoutMS=5000,
@@ -50,16 +52,21 @@ class DBManager:
             asyncio.get_event_loop().run_until_complete(self.ensure_indexes())
             
             logger.info("MongoDB connection pool initialized.")
-        except Exception as e:
-            logger.error(f"Error initializing DBManager: {e}")
+        except errors.ServerSelectionTimeoutError as e:
+            logger.error(f"Error connecting to MongoDB: {e}")
             raise
-    
+        except Exception as e:
+            logger.error(f"Unexpected error occurred: {e}")
+            raise
+
     async def ensure_indexes(self):
+        """Ensure that necessary indexes are created."""
         try:
             await self.users.create_index("user_id", unique=True)
             logger.info("Ensured unique index on user_id.")
         except Exception as e:
             logger.error(f"Error creating indexes: {e}")
+            raise
 
     async def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
