@@ -56,65 +56,81 @@ async function getUserPrivateKey(user_id) {
 
 // Create a new wallet
 // Create a new wallet with detailed logs
-async function createWallet() {
-    try {
-        console.log("Starting wallet creation...");
-        const startTime = Date.now();
+async function createWallet(retries = 3) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            console.log(`Starting wallet creation (Attempt ${attempt})...`);
+            const startTime = Date.now();
 
-        const mnemonic = Mnemonic.random();
-        console.log("Mnemonic generated.");
+            console.log("Connecting to RPC client...");
+            await rpc.connect();
+            console.log("RPC client connected.");
 
-        const seed = mnemonic.toSeed();
-        console.log("Seed derived.");
+            const mnemonic = Mnemonic.random();
+            console.log("Mnemonic generated.");
 
-        const xPrv = new XPrv(seed);
-        console.log("Master key created.");
+            const seed = mnemonic.toSeed();
+            console.log("Seed derived.");
 
-        const receivePath = "m/44'/111111'/0'/0/0";
-        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
-        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
-        console.log(`Receiving address derived: ${receiveAddress.toString()}`);
+            const xPrv = new XPrv(seed);
+            console.log("Master key created.");
 
-        const changePath = "m/44'/111111'/0'/1/0";
-        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
-        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
-        console.log(`Change address derived: ${changeAddress.toString()}`);
+            const receivePath = "m/44'/111111'/0'/0/0";
+            const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
+            const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
+            console.log(`Receiving address derived: ${receiveAddress.toString()}`);
 
-        const endTime = Date.now();
-        console.log(`Wallet creation completed in ${endTime - startTime}ms`);
+            const changePath = "m/44'/111111'/0'/1/0";
+            const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
+            const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
+            console.log(`Change address derived: ${changeAddress.toString()}`);
 
-        return {
-            success: true,
-            mnemonic: mnemonic.phrase,
-            receivingAddress: receiveAddress.toString(),
-            changeAddress: changeAddress.toString(),
-            xPrv: xPrv.intoString("xprv"),
-        };
-    } catch (err) {
-        console.error("Error during wallet creation:", err);
-        return { success: false, error: err.message };
+            const endTime = Date.now();
+            console.log(`Wallet creation completed in ${endTime - startTime}ms`);
+
+            return {
+                success: true,
+                mnemonic: mnemonic.phrase,
+                receivingAddress: receiveAddress.toString(),
+                changeAddress: changeAddress.toString(),
+                xPrv: xPrv.intoString("xprv"),
+            };
+        } catch (err) {
+            console.error(`Error during wallet creation (Attempt ${attempt}): ${err.message}`);
+            if (attempt === retries) {
+                return { success: false, error: "Max retries reached during wallet creation." };
+            }
+        } finally {
+            console.log("Disconnecting RPC client...");
+            await rpc.disconnect();
+        }
     }
 }
-
 
 // Check balance of an address
 async function checkBalance(address) {
     try {
+        console.log("Connecting to RPC client...");
         await rpc.connect();
+
+        console.log(`Checking balance for address: ${address}`);
         const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
         const balance = balances[0]?.amount || 0n;
+
+        console.log(`Balance retrieved: ${balance.toString()}`);
         return {
             success: true,
             address,
             balance: balance.toString(),
         };
     } catch (err) {
+        console.error(`Error checking balance: ${err.message}`);
         return { success: false, error: err.message };
     } finally {
+        console.log("Disconnecting RPC client...");
         await rpc.disconnect();
     }
 }
-
 
 // Command-line interface
 if (require.main === module) {
