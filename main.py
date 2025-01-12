@@ -188,6 +188,7 @@ async def generate_openai_response(user_text: str) -> str:
         "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": persona},
+	    {"role": "user", "content": user_text},
         ],
         "temperature": 0.8,
         "max_tokens": 1024,
