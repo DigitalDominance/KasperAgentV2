@@ -11,44 +11,31 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     async def run_node_command(self, command, *args):
-        """Run a Node.js command asynchronously with a timeout."""
-        try:
-            # Start the subprocess
-            logger.info(f"Running Node.js command: {command} with args: {args}")
-            process = await asyncio.create_subprocess_exec(
-                "node", self.node_script_path, command, *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+    """Run a Node.js command asynchronously with improved logging."""
+    try:
+        # Log the command and arguments for better traceability
+        logger.info(f"Running Node.js command: {command} with args: {args}")
+        
+        # Prepare payload for HTTP call
+        payload = {"command": command, "args": args}
 
-            try:
-                # Wait for the process to complete with a timeout
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
-            except asyncio.TimeoutError:
-                logger.error(f"Node.js command '{command}' timed out. Terminating process.")
-                process.kill()
-                await process.wait()
-                return {"success": False, "error": "Subprocess timed out"}
+        # Send the command via HTTP to Node.js
+        async with httpx.AsyncClient() as client:
+            response = await client.post(f"{self.node_script_path}/execute", json=payload, timeout=10)
 
-            stdout = stdout.decode().strip()
-            stderr = stderr.decode().strip()
+        # Check response status
+        if response.status_code != 200:
+            logger.error(f"Node.js HTTP call failed with status {response.status_code}: {response.text}")
+            return {"success": False, "error": f"HTTP {response.status_code}: {response.text}"}
 
-            # Log outputs
-            if stdout:
-                logger.info(f"Node.js stdout for {command}: {stdout}")
-            if stderr:
-                logger.error(f"Node.js stderr for {command}: {stderr}")
+        # Parse response JSON
+        result = response.json()
+        logger.info(f"Node.js response: {result}")
+        return result
 
-            # Parse JSON output
-            try:
-                return json.loads(stdout)
-            except json.JSONDecodeError:
-                logger.error(f"Invalid JSON output: {stdout}")
-                return {"success": False, "error": "Invalid JSON in Node.js output"}
-
-        except Exception as e:
-            logger.error(f"Error running Node.js command '{command}': {e}")
-            return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error(f"Error running Node.js command '{command}': {e}")
+        return {"success": False, "error": str(e)}
 
     async def create_wallet(self):
         """Create a new wallet."""
