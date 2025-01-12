@@ -1,8 +1,9 @@
-import os
-import asyncio
+# main.py
 import os
 import logging
 from io import BytesIO
+import sys
+import asyncio
 
 import httpx
 from pydub import AudioSegment
@@ -458,6 +459,9 @@ async def main_async():
             logger.info("🚀 Starting Kasper AI Bot...")
             await application.run_polling()
 
+    except Exception as e:
+        logger.error(f"Error during main_async: {e}", exc_info=True)
+
     finally:
         logger.info("Shutting down...")
         # Close the database connection
@@ -468,8 +472,13 @@ async def main_async():
 def main():
     """Entry point of the application."""
     try:
-        import asyncio
-        asyncio.run(main_async())
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If the loop is already running, create a task
+            loop.create_task(main_async())
+        else:
+            # If no loop is running, run the main_async() using asyncio.run()
+            asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
     except Exception as e:
