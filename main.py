@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize dependencies
 db = DBManager()
-
 USER_MESSAGE_LIMITS = defaultdict(lambda: {
     "count": 0,
     "reset_time": datetime.utcnow() + timedelta(hours=24),
@@ -120,9 +119,10 @@ async def start_command(update, context):
             if wallet_data.get("success"):
                 db.add_user(user_id, credits=3, **wallet_data)
                 await update.message.reply_text(
-                    "👻 *Welcome, brave spirit!* I am Kasper, your spectral guide.\n\n"
+                    "👻 *Welcome, brave spirit!*\n\n"
                     "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
-                    "🌟 Let the adventure begin! Type /balance to check your credits."
+                    "🌟 Let the adventure begin! Type /balance to check your credits.",
+                    parse_mode="Markdown"
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
@@ -136,8 +136,19 @@ async def start_command(update, context):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 
-# /topup Command Handler
-# /topup Command Handler
+# /balance Command Handler
+async def balance_command(update, context):
+    user_id = update.effective_user.id
+    user = db.get_user(user_id)
+
+    if not user:
+        await update.message.reply_text("❌ You need to /start first to create a wallet.")
+        return
+
+    total_credits = user.get("credits", 0)
+    await update.message.reply_text(f"👻 You have {total_credits} credits available.")
+
+
 # /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
@@ -148,17 +159,15 @@ async def topup_command(update, context):
         return
 
     wallet_address = user.get("wallet")
-    if not wallet_address:
-        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-        return
-
     rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
+
     message = await update.message.reply_text(
-        f"👻 Spook-tacular Top-Up!\n\n"
+        f"👻 *Spook-tacular Top-Up!*\n\n"
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
-        "✅ After depositing, finalize the process by using the `/endtopup` command."
+        "✅ After depositing, finalize the process by using the `/endtopup` command.",
+        parse_mode="Markdown",
     )
 
     # Cancel any previous scan
@@ -168,22 +177,21 @@ async def topup_command(update, context):
             old_task.cancel()
 
     # Start a new scan with countdown
-    async def scan_deposits_with_countdown():
+    async def scan_with_countdown():
         try:
+            end_time = datetime.utcnow() + timedelta(minutes=5)
             async with httpx.AsyncClient() as client:
-                end_time = datetime.utcnow() + timedelta(minutes=5)
                 while datetime.utcnow() < end_time:
-                    remaining_time = end_time - datetime.utcnow()
-                    minutes, seconds = divmod(remaining_time.total_seconds(), 60)
+                    remaining = end_time - datetime.utcnow()
+                    minutes, seconds = divmod(remaining.total_seconds(), 60)
                     countdown_text = f"⏳ Remaining Time: {int(minutes)}:{int(seconds):02d}"
-                    
+
                     try:
-                        # Edit the message to update the countdown
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
                             text=(
-                                f"👻 Spook-tacular Top-Up!\n\n"
+                                f"👻 *Spook-tacular Top-Up!*\n\n"
                                 f"🔑 Deposit Address: `{wallet_address}`\n"
                                 f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                 f"{countdown_text}\n\n"
@@ -192,38 +200,23 @@ async def topup_command(update, context):
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
-                        logger.error(f"Error updating countdown message: {edit_error}")
+                        logger.error(f"Error updating countdown: {edit_error}")
 
-                    # Check transactions during the scan
-                    params = {"address": wallet_address, "tick": "KASPER"}
-                    response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
-                    response.raise_for_status()
-                    data = response.json()
+                    await asyncio.sleep(5)
 
-                    for tx in data.get("result", []):
-                        logger.info(f"KASPER transaction detected during scan: {tx}")
-
-                    await asyncio.sleep(5)  # Update every 5 seconds
-
-                # Timeout behavior
                 await context.bot.edit_message_text(
                     chat_id=update.effective_chat.id,
                     message_id=message.message_id,
-                    text=(
-                        f"👻 *Spook-tacular Top-Up!*\n\n"
-                        f"🔑 Deposit Address: `{wallet_address}`\n"
-                        f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-                        "⏳ The top-up scan has timed out. Please use `/topup` to restart."
-                    ),
-                    parse_mode="Markdown",
+                    text=f"👻 *Top-Up Time Expired!*\n\n"
+                         "The scan has timed out. Please use /topup to restart.",
+                    parse_mode="Markdown"
                 )
         except asyncio.CancelledError:
-            logger.info("Scan task was canceled.")
+            logger.info("Scan task canceled.")
         except Exception as e:
-            logger.error(f"Error during top-up scan: {e}")
+            logger.error(f"Error during scan: {e}")
 
-    context.chat_data["scan_task"] = asyncio.create_task(scan_deposits_with_countdown())
-
+    context.chat_data["scan_task"] = asyncio.create_task(scan_with_countdown())
 
 
 # /endtopup Command Handler
@@ -236,18 +229,11 @@ async def endtopup_command(update, context):
         return
 
     wallet_address = user.get("wallet")
-    if not wallet_address:
-        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-        return
-
-    # Cancel any active scan
     if "scan_task" in context.chat_data:
         scan_task = context.chat_data["scan_task"]
         if not scan_task.done():
             scan_task.cancel()
-            await update.message.reply_text("⏳ Stopping the top-up scan...")
 
-    # Process deposits
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -256,25 +242,22 @@ async def endtopup_command(update, context):
             response.raise_for_status()
             data = response.json()
 
-            # Calculate credits from new transactions
             total_credits = 0
-            processed_hashes = db.get_processed_hashes(user_id)
+            processed_hashes = db.get_processed_hashes(user_id
             for tx in data.get("result", []):
                 hash_rev = tx.get("hashRev")
                 if hash_rev and hash_rev not in processed_hashes:
                     kasper_amount = int(tx.get("amt", 0))
                     credits = kasper_amount // CREDIT_CONVERSION_RATE
                     total_credits += credits
-
-                    # Save processed hash
                     db.add_processed_hash(user_id, hash_rev)
 
             if total_credits > 0:
-                # Update user's credits
                 db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
                 await update.message.reply_text(
                     f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                    "👻 Use /balance to see your updated credits!"
+                    "👻 Use /balance to see your updated credits!",
+                    parse_mode="Markdown"
                 )
             else:
                 await update.message.reply_text("❌ No new KASPER deposits found.")
@@ -283,14 +266,40 @@ async def endtopup_command(update, context):
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
 
 
+# /text Command Handler for AI
+async def handle_text_message(update, context):
+    user_id = update.effective_user.id
+    user_text = update.message.text.strip()
+    user = db.get_user(user_id)
+
+    if not user or user.get("credits", 0) <= 0:
+        await update.message.reply_text("❌ You have no credits remaining.")
+        return
+
+    try:
+        await update.message.reply_text("👻 Kasper is thinking...")
+        ai_response = await generate_openai_response(user_text)
+        mp3_audio = await elevenlabs_tts(ai_response)
+        ogg_audio = convert_mp3_to_ogg(mp3_audio)
+
+        db.update_user_credits(user_id, user.get("credits", 0) - 1)
+
+        await update.message.reply_text(ai_response)
+        await update.message.reply_voice(voice=ogg_audio)
+    except Exception as e:
+        logger.error(f"Error in handle_text_message: {e}")
+        await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
+
+
 # Main function
 def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(CommandHandler("endtopup", endtopup_command))
-    application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     logger.info("🚀 Starting Kasper AI Bot...")
     application.run_polling()
