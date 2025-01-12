@@ -1,12 +1,12 @@
-from pymongo import MongoClient, errors
-from pymongo.collection import ReturnDocument
-from motor.motor_asyncio import AsyncIOMotorClient  # Ensure Motor is used for async operations
-from pydantic import BaseModel, Field, ValidationError  # Added ValidationError import
+# db_manager.py
+from pymongo import errors
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, List
 import logging
 import os
 from datetime import datetime
-import asyncio  # Import asyncio
+import asyncio  # Imported asyncio
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -22,7 +22,6 @@ class User(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_active: Optional[datetime] = None
     processed_hashes: List[str] = Field(default_factory=list)  # To store processed transaction hashes
-
 
 class DBManager:
     def __init__(self):
@@ -48,9 +47,6 @@ class DBManager:
             self.db = self.client["kasperdb"]
             self.users = self.db["users"]
 
-            # Ensure user_id is unique in the collection
-            asyncio.get_event_loop().run_until_complete(self.ensure_indexes())
-            
             logger.info("MongoDB connection pool initialized.")
         except errors.ServerSelectionTimeoutError as e:
             logger.error(f"Error connecting to MongoDB: {e}")
@@ -59,8 +55,8 @@ class DBManager:
             logger.error(f"Unexpected error occurred: {e}")
             raise
 
-    async def ensure_indexes(self):
-        """Ensure that necessary indexes are created."""
+    async def init_db(self):
+        """Asynchronously initialize the database, such as creating indexes."""
         try:
             await self.users.create_index("user_id", unique=True)
             logger.info("Ensured unique index on user_id.")
