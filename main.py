@@ -246,8 +246,8 @@ async def topup_command(update, context):
     f"🔑 **Deposit Address:** `{wallet_address}`\n"
     f"💸 **Current Rate:** 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
     f"⏳ **Remaining Time:** 5:00\n\n"
-    "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
-    "💡 *(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ If your deposit is not recognized within 5:00, you can restart by using* `/topup` *again.*",
+    "✅ *If your deposit is recognized, end the process by using the* /endtopup *command.*\n\n"
+    "💡 *If your deposit is not recognized within 5:00, you can restart by using* /topup *again.*",
     parse_mode="Markdown"
 )
 
@@ -276,8 +276,8 @@ async def topup_command(update, context):
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-                                  "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
-   				  "💡 *(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ If your deposit is not recognized within 5:00, you can restart by using* `/topup` *again.*",
+                                  "✅ *If your deposit is recognized, end the process by using the* /endtopup *command.*\n\n"
+   				  "💡 *If your deposit is not recognized within 5:00, you can restart by using* /topup *again.*",
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
