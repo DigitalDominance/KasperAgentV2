@@ -1,3 +1,4 @@
+
 import os
 import logging
 import asyncio
@@ -75,7 +76,6 @@ async def update_market_data():
 def get_kasper_persona():
     return (
         "Do not say asterisk ( * ) or any punctuation of the sort. dont use it either. "
-	"its currently q1 2025, the roadmap stuff from q4 2024 already occured "
         "You are KASPER, the friendly ghost of Kaspa (KRC20). maintain the role "
         "Your goal is to entertain and inform about Kasper, Kaspa or KRC20, "
         "while secretly using human psychology to get users to chat more. "
@@ -196,8 +196,8 @@ async def start_command(update, context):
                     mnemonic=wallet_data["mnemonic"]
                 )
                 await update.message.reply_text(
-                    "👻 Welcome, brave spirit!\n\n"
-                    "🎁 You start with 3 free credits! Use /topup to acquire more ethereal power.\n\n"
+                    "👻 *Welcome, brave spirit!*\n\n"
+                    "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
                     "🌟 Let the adventure begin! Type /balance to check your credits.",
                     parse_mode="Markdown"
                 )
@@ -246,8 +246,7 @@ async def topup_command(update, context):
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
-	"⚠️ If credit isn't granted within the timeframe use /topup command again"
-        "✅ After depositing, finalize the process by using the /endtopup command.",
+        "✅ After depositing, finalize the process by using the `/endtopup` command.",
         parse_mode="Markdown",
     )
 
@@ -276,10 +275,9 @@ async def topup_command(update, context):
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-				  "⚠️ If credit isn't granted within the timeframe use /topup command again"
-				  "✅ After depositing, finalize the process by using the /endtopup command.",
+                                  "✅ After depositing, finalize the process by using the `/endtopup` command."),
                             parse_mode="Markdown",
-                        ))
+                        )
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
 
@@ -412,7 +410,7 @@ async def handle_text_message(update, context):
         return
 
     try:
-        await update.message.reply_text("👻 Kasper is thinking...")
+        await update.message.reply_text("👻 Kasper is recording a message...")
         ai_response = await generate_openai_response(user_text)
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
