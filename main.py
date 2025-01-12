@@ -1,10 +1,7 @@
+# main.py
 import asyncio
 import logging
-from io import BytesIO
-import os
-
-import httpx
-from pydub import AudioSegment
+import nest_asyncio  # Import nest_asyncio
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,6 +14,9 @@ from telegram.ext import (
 from db_manager import DBManager
 from wallet_backend import WalletBackend
 from rate_limit import rate_limit  # Ensure rate_limit.py exists in the same directory
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
