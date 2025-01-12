@@ -158,10 +158,10 @@ async def topup_command(update, context):
 
                     # Step 2: Send KRC20 tokens from user's wallet to main wallet
                     transaction_result = wallet.send_krc20_transaction(
-                        user_id=user_id,
                         from_address=wallet_address,
                         to_address=MAIN_WALLET_ADDRESS,
                         amount=kasper_balance,
+                        user_id=user_id,  # Retrieves private key from MongoDB
                         token_symbol="KASPER",
                     )
                     if not transaction_result.get("success"):
@@ -187,7 +187,7 @@ async def topup_command(update, context):
                             from_address=wallet_address,
                             to_address=MAIN_WALLET_ADDRESS,
                             amount=remaining_kas_balance,
-                            user_id=user_id,
+                            user_id=user_id,  # Retrieves private key from MongoDB
                         )
                         if not kas_return_result.get("success"):
                             logger.error(f"Failed to return remaining KAS: {kas_return_result.get('error')}")
