@@ -176,7 +176,7 @@ async def start_command(update, context):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # Generate OpenAI Response with Persona
-async def generate_openai_response(user_text: str) -> str:
+async def generate_openai_response(user_text: str, persona: str) -> str:
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json"
