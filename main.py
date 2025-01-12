@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timedelta
 from collections import defaultdict
 from io import BytesIO
+from asyncio import Lock
 
 import httpx
 from pydub import AudioSegment
@@ -185,56 +186,47 @@ async def start_command(update, context):
     retry_delay = 2  # Delay between retries (in seconds)
     
     try:
-        user = db.get_user(user_id)
-        if not user:
-            for attempt in range(1, max_retries + 1):
-                # Attempt to create a wallet
-                wallet_data = wallet_backend.create_wallet()
-                
-                # Check if wallet creation succeeded
-                if wallet_data.get("success"):
-                    # Validate that all required fields are present
-                    required_fields = ["receiving_address", "private_key", "mnemonic"]
-                    if all(field in wallet_data for field in required_fields):
-                        # Add wallet data to the database
+        async with Lock():
+            user = db.get_user(user_id)
+            if not user:
+                for attempt in range(1, max_retries + 1):
+                    wallet_data = wallet_backend.create_wallet()
+                    
+                    if wallet_data.get("success") and all(
+                        field in wallet_data for field in ["receiving_address", "private_key", "mnemonic"]
+                    ):
                         db.add_user(
                             user_id,
                             credits=3,
                             wallet=wallet_data["receiving_address"],
                             private_key=wallet_data["private_key"],
-                            mnemonic=wallet_data["mnemonic"]
+                            mnemonic=wallet_data["mnemonic"],
                         )
                         await update.message.reply_text(
                             "👻 *Welcome, brave spirit!*\n\n"
                             "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
                             "🌟 Let the adventure begin! Type /balance to check your credits.",
-                            parse_mode="Markdown"
+                            parse_mode="Markdown",
                         )
                         return
-                    else:
-                        logger.error(f"Missing wallet fields: {wallet_data}")
-                        await update.message.reply_text(
-                            "⚠️ Wallet setup failed due to missing data. Please try again later."
-                        )
-                        return
+                    
+                    logger.warning(
+                        f"Wallet creation failed (attempt {attempt}/{max_retries}). Retrying in {retry_delay}s..."
+                    )
+                    await asyncio.sleep(retry_delay)
                 
-                # Log retry and wait before next attempt
-                logger.warning(f"Wallet creation failed (attempt {attempt}/{max_retries}). Retrying in {retry_delay}s...")
-                await asyncio.sleep(retry_delay)
-            
-            # If all retries fail
-            logger.error("Wallet creation failed after multiple attempts.")
-            await update.message.reply_text("❌ Failed to create your wallet after several attempts. Please try again later.")
-        else:
-            # User already exists
-            total_credits = user.get("credits", 0)
-            await update.message.reply_text(
-                f"👻 Welcome back, spirit! You have {total_credits} credits remaining. Use /topup to gather more!"
-            )
+                logger.error("Wallet creation failed after multiple attempts.")
+                await update.message.reply_text(
+                    "❌ Failed to create your wallet after several attempts. Please try again later."
+                )
+            else:
+                total_credits = user.get("credits", 0)
+                await update.message.reply_text(
+                    f"👻 Welcome back, spirit! You have {total_credits} credits remaining. Use /topup to gather more!"
+                )
     except Exception as e:
-        logger.error(f"Error in start_command: {e}")
+        logger.error(f"Error in start_command: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-
 
 
 
