@@ -82,6 +82,7 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
 }
 
 // Send a KRC20 token transaction
+// Send a KRC20 token transaction
 async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
         const privateKeyStr = await getUserPrivateKey(user_id);
@@ -89,7 +90,9 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
 
         await rpc.connect();
         const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!utxos.length) throw new Error("No UTXOs available");
+        if (!utxos.length) {
+            throw new Error("No UTXOs available");
+        }
 
         const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`;
         const outputs = [{ address: toAddress, amount: 0n }];
@@ -105,6 +108,7 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
         await rpc.disconnect();
     }
 }
+
 
 // Command-line interface
 if (require.main === module) {
