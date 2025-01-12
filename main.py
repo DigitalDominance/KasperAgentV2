@@ -11,6 +11,7 @@ from pydub import AudioSegment
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
+    Application,  # Import Application for type hints
     CommandHandler,
     MessageHandler,
     ContextTypes,
