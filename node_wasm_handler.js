@@ -46,27 +46,47 @@ async function getUserPrivateKey(user_id) {
 }
 
 // Create a new wallet
+// Create a new wallet with detailed logs
 async function createWallet() {
-    const mnemonic = Mnemonic.random();
-    const seed = mnemonic.toSeed();
-    const xPrv = new XPrv(seed);
+    try {
+        console.log("Starting wallet creation...");
+        const startTime = Date.now();
 
-    const receivePath = "m/44'/111111'/0'/0/0";
-    const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
-    const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
+        const mnemonic = Mnemonic.random();
+        console.log("Mnemonic generated.");
 
-    const changePath = "m/44'/111111'/0'/1/0";
-    const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
-    const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
+        const seed = mnemonic.toSeed();
+        console.log("Seed derived.");
 
-    return {
-        success: true,
-        mnemonic: mnemonic.phrase,
-        receivingAddress: receiveAddress.toString(),
-        changeAddress: changeAddress.toString(),
-        xPrv: xPrv.intoString("xprv"),
-    };
+        const xPrv = new XPrv(seed);
+        console.log("Master key created.");
+
+        const receivePath = "m/44'/111111'/0'/0/0";
+        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
+        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
+        console.log(`Receiving address derived: ${receiveAddress.toString()}`);
+
+        const changePath = "m/44'/111111'/0'/1/0";
+        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
+        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
+        console.log(`Change address derived: ${changeAddress.toString()}`);
+
+        const endTime = Date.now();
+        console.log(`Wallet creation completed in ${endTime - startTime}ms`);
+
+        return {
+            success: true,
+            mnemonic: mnemonic.phrase,
+            receivingAddress: receiveAddress.toString(),
+            changeAddress: changeAddress.toString(),
+            xPrv: xPrv.intoString("xprv"),
+        };
+    } catch (err) {
+        console.error("Error during wallet creation:", err);
+        return { success: false, error: err.message };
+    }
 }
+
 
 // Check balance of an address
 async function checkBalance(address) {
