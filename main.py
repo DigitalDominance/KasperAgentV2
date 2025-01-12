@@ -279,7 +279,7 @@ async def topup_command(update, context):
 				  "⚠️ If credit isn't granted within the timeframe use /topup command again"
 				  "✅ After depositing, finalize the process by using the /endtopup command.",
                             parse_mode="Markdown",
-                        )
+                        ))
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
 
