@@ -199,7 +199,7 @@ async def start_command(update, context):
                     "👻 *Welcome, brave spirit!*\n\n"
                     "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
                     "🌟 Let the adventure begin! Type /balance to check your credits.",
-                    parse_mode="MarkdownV2"
+                    parse_mode="Markdown"
                 )
             else:
                 error_message = wallet_data.get("error", "Failed to create a wallet.")
@@ -248,7 +248,7 @@ async def topup_command(update, context):
         f"⏳ Remaining Time: 5:00\n\n"
         "✅ After depositing, finalize the process by using the /endtopup command."
 	"💡 If your deposit is not recognized within 5:00, restart using_ /topup.",
-        parse_mode="MarkdownV2",
+        parse_mode="Markdown",
     )
 
     # Cancel any previous scan
@@ -278,7 +278,7 @@ async def topup_command(update, context):
                                   f"{countdown_text}\n\n"
 				  "✅ After depositing, finalize the process by using the /endtopup command.",
                                   "💡 If your deposit is not recognized within 5:00, restart using_ /topup."),
-                            parse_mode="MarkdownV2",
+                            parse_mode="Markdown",
                         )
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
