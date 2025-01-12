@@ -11,6 +11,9 @@ const {
     NetworkType,
     createTransaction,
     signTransaction,
+    UtxoProcessor,
+    UtxoContext,
+    Generator,
 } = kaspa;
 
 // MongoDB connection setup
@@ -30,6 +33,7 @@ async function connectToDatabase() {
         const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
         await client.connect();
         db = client.db("kasperdb");
+        console.log("✅ MongoDB connection established");
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: `Failed to connect to MongoDB: ${err.message}` }));
         process.exit(1);
@@ -58,6 +62,55 @@ async function getUserPrivateKey(user_id) {
     }
 }
 
+// Create a new wallet
+async function createWallet() {
+    try {
+        const mnemonic = Mnemonic.random();
+        const seed = mnemonic.toSeed();
+        const xPrv = new XPrv(seed);
+
+        const receivePath = "m/44'/111111'/0'/0/0";
+        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
+        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
+
+        const changePath = "m/44'/111111'/0'/1/0";
+        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
+        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
+
+        console.log(
+            JSON.stringify({
+                success: true,
+                mnemonic: mnemonic.phrase,
+                receivingAddress: receiveAddress.toString(),
+                changeAddress: changeAddress.toString(),
+                xPrv: xPrv.intoString("xprv"),
+            })
+        );
+    } catch (err) {
+        console.error(JSON.stringify({ success: false, error: err.message }));
+    }
+}
+
+// Check balance of an address
+async function checkBalance(address) {
+    try {
+        await rpc.connect();
+        const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
+        await rpc.disconnect();
+
+        const balance = balances[0]?.amount || 0n;
+        console.log(
+            JSON.stringify({
+                success: true,
+                address,
+                balance: balance.toString(),
+            })
+        );
+    } catch (err) {
+        console.error(JSON.stringify({ success: false, error: err.message }));
+    }
+}
+
 // Send a KAS transaction
 async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     try {
@@ -68,47 +121,70 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
         const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
         if (!utxos.length) throw new Error("No UTXOs available");
 
-        const outputs = [{ address: toAddress, amount: BigInt(amount) }];
-        const transaction = createTransaction(utxos, outputs, 0n, "", 1);
-        signTransaction(transaction, [privateKey]);
+        const generator = new Generator({
+            entries: utxos,
+            outputs: [{ address: toAddress, amount: BigInt(amount) }],
+            priorityFee: 1000n,
+            changeAddress: fromAddress,
+        });
 
-        const result = await rpc.submitTransaction({ transaction });
-        console.log(JSON.stringify({ success: true, txid: result.transactionId }));
+        let pending;
+        while ((pending = await generator.next())) {
+            await pending.sign([privateKey]);
+            const txid = await pending.submit(rpc);
+            console.log(JSON.stringify({ success: true, txid }));
+        }
+
+        console.log("Transaction Summary:", generator.summary());
     } catch (err) {
-        console.log(JSON.stringify({ success: false, error: err.message }));
+        console.error(JSON.stringify({ success: false, error: err.message }));
     } finally {
         await rpc.disconnect();
     }
 }
 
-// Send a KRC20 token transaction
 // Send a KRC20 token transaction
 async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
         const privateKeyStr = await getUserPrivateKey(user_id);
         const privateKey = new PrivateKey(privateKeyStr);
 
+        const processor = new UtxoProcessor({ rpc, networkId: "mainnet" });
+        await processor.start();
+        const context = await new UtxoContext({ processor });
+
         await rpc.connect();
-        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
-        if (!utxos.length) {
-            throw new Error("No UTXOs available");
+        let { isSynced } = await rpc.getServerInfo();
+        if (!isSynced) {
+            throw new Error("Node is not synchronized. Please try again later.");
         }
 
+        await context.trackAddresses([fromAddress]);
+
         const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`;
-        const outputs = [{ address: toAddress, amount: 0n }];
-        const transaction = createTransaction(utxos, outputs, 0n, payload, 1);
+        const generator = new Generator({
+            entries: context,
+            outputs: [{ address: toAddress, amount: 0n }],
+            payload,
+            priorityFee: 1000n,
+            changeAddress: fromAddress,
+        });
 
-        signTransaction(transaction, [privateKey]);
-        const result = await rpc.submitTransaction({ transaction });
+        let pending;
+        while ((pending = await generator.next())) {
+            await pending.sign([privateKey]);
+            const txid = await pending.submit(rpc);
+            console.log(JSON.stringify({ success: true, txid }));
+        }
 
-        console.log(JSON.stringify({ success: true, txid: result.transactionId }));
+        console.log("Transaction Summary:", generator.summary());
+        await processor.shutdown();
     } catch (err) {
-        console.log(JSON.stringify({ success: false, error: err.message }));
+        console.error(JSON.stringify({ success: false, error: err.message }));
     } finally {
         await rpc.disconnect();
     }
 }
-
 
 // Command-line interface
 if (require.main === module) {
@@ -119,6 +195,13 @@ if (require.main === module) {
             await connectToDatabase();
 
             switch (command) {
+                case "createWallet":
+                    await createWallet();
+                    break;
+                case "checkBalance":
+                    if (!args[0]) throw new Error("Address is required for checkBalance");
+                    await checkBalance(args[0]);
+                    break;
                 case "sendTransaction":
                     if (args.length < 4) throw new Error("Invalid arguments for sendTransaction");
                     await sendTransaction(parseInt(args[0]), args[1], args[2], args[3]);
@@ -131,7 +214,7 @@ if (require.main === module) {
                     console.log(JSON.stringify({ success: false, error: "Invalid command" }));
             }
         } catch (e) {
-            console.log(JSON.stringify({ success: false, error: e.message }));
+            console.error(JSON.stringify({ success: false, error: e.message }));
         }
     })();
 }
