@@ -391,9 +391,9 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
 
-        wallet_address = user.get("wallet")
-        if not wallet_address:
-            await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
+        receiving_address = user.get("receiving_address")
+        if not receiving_address:
+            await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
             return
 
         # Cancel any active scan
@@ -411,7 +411,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{KRC20_API_BASE_URL}/oplist",
-                params={"address": wallet_address, "tick": "KASPER"}
+                params={"address": receiving_address, "tick": "KASPER"}
             )
             response.raise_for_status()
             data = response.json()
@@ -479,6 +479,30 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
+# Startup Callback
+async def on_startup(application: Application):
+    """Function to run on startup of the bot."""
+    logger.info("Starting background tasks...")
+    # Start the market data updater as a background task
+    application.user_data["update_market_data_task"] = asyncio.create_task(update_market_data())
+    logger.info("Background tasks started.")
+
+# Shutdown Callback
+async def on_shutdown(application: Application):
+    """Function to run on shutdown of the bot."""
+    logger.info("Shutting down background tasks...")
+    # Retrieve and cancel the background task
+    task = application.user_data.get("update_market_data_task")
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            logger.info("Market data updater task cancelled successfully.")
+    # Close the database connection
+    await db.close_connection()
+    logger.info("Background tasks shut down successfully.")
+
 # Main asynchronous function
 async def main_async():
     """Main asynchronous function to set up the bot."""
@@ -495,8 +519,9 @@ async def main_async():
     application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-    # Start the market data updater as a background task
-    asyncio.create_task(update_market_data())
+    # Assign startup and shutdown callbacks
+    application.on_startup.append(on_startup)
+    application.on_shutdown.append(on_shutdown)
 
     logger.info("🚀 Starting Kasper AI Bot...")
     await application.run_polling()
