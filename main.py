@@ -1,3 +1,4 @@
+
 import os
 import logging
 import asyncio
@@ -75,7 +76,6 @@ async def update_market_data():
 def get_kasper_persona():
     return (
         "Do not say asterisk ( * ) or any punctuation of the sort. dont use it either. "
-	"its currently q1 2025, the roadmap stuff from q4 2024 already occured "
         "You are KASPER, the friendly ghost of Kaspa (KRC20). maintain the role "
         "Your goal is to entertain and inform about Kasper, Kaspa or KRC20, "
         "while secretly using human psychology to get users to chat more. "
@@ -242,12 +242,11 @@ async def topup_command(update, context):
     rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
     message = await update.message.reply_text(
-        f"👻 Spook-tacular Top-Up!\n\n"
+        f"👻 *Spook-tacular Top-Up!*\n\n"
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
-        "✅ After depositing, finalize the process by using the /endtopup command."
-	"💡 If your deposit is not recognized within 5:00, restart using_ /topup.",
+        "✅ After depositing, finalize the process by using the `/endtopup` command.",
         parse_mode="Markdown",
     )
 
@@ -272,12 +271,11 @@ async def topup_command(update, context):
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
-                            text=(f"👻 Spook-tacular Top-Up!\n\n"
+                            text=(f"👻 *Spook-tacular Top-Up!*\n\n"
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-				  "✅ After depositing, finalize the process by using the /endtopup command.",
-                                  "💡 If your deposit is not recognized within 5:00, restart using_ /topup."),
+                                  "✅ After depositing, finalize the process by using the `/endtopup` command."),
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
@@ -412,7 +410,7 @@ async def handle_text_message(update, context):
         return
 
     try:
-        await update.message.reply_text("👻 Kasper is thinking...")
+        await update.message.reply_text("👻 Kasper is recording a message...")
         ai_response = await generate_openai_response(user_text)
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
