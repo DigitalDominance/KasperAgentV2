@@ -9,6 +9,7 @@ import httpx
 from pydub import AudioSegment
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from db_manager import DBManager
+from wallet_backend import WalletBackend
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize dependencies
 db = DBManager()
+wallet_backend = WalletBackend()
 USER_MESSAGE_LIMITS = defaultdict(lambda: {
     "count": 0,
     "reset_time": datetime.utcnow() + timedelta(hours=24),
@@ -149,13 +151,22 @@ async def generate_openai_response(user_text: str) -> str:
 
 # /start Command Handler
 async def start_command(update, context):
+    """Handles the /start command."""
     user_id = update.effective_user.id
     try:
         user = db.get_user(user_id)
         if not user:
-            wallet_data = db.create_wallet()
+            # Create wallet using WalletBackend
+            wallet_data = wallet_backend.create_wallet()
             if wallet_data.get("success"):
-                db.add_user(user_id, credits=3, **wallet_data)
+                # Add wallet data, including mnemonic, to the database
+                db.add_user(
+                    user_id,
+                    credits=3,
+                    wallet_address=wallet_data["receiving_address"],
+                    private_key=wallet_data["private_key"],
+                    mnemonic=wallet_data["mnemonic"]
+                )
                 await update.message.reply_text(
                     "👻 *Welcome, brave spirit!*\n\n"
                     "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
@@ -163,7 +174,8 @@ async def start_command(update, context):
                     parse_mode="Markdown"
                 )
             else:
-                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
+                error_message = wallet_data.get("error", "Failed to create a wallet.")
+                await update.message.reply_text(f"⚠️ {error_message} Please try again later.")
         else:
             total_credits = user.get("credits", 0)
             await update.message.reply_text(
@@ -172,6 +184,7 @@ async def start_command(update, context):
     except Exception as e:
         logger.error(f"Error in start_command: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 
 # /balance Command Handler
