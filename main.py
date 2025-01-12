@@ -183,14 +183,12 @@ async def generate_openai_response(user_text: str) -> str:
 async def start_command(update, context):
     """Handles the /start command."""
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id  # Extract chat ID for context.bot.send_message
     logger.info(f"Processing /start command for user_id: {user_id}")
     try:
-        # Check if the user already exists in the database
         user = db.get_user(user_id)
         if not user:
             logger.info(f"User {user_id} not found. Initiating wallet creation...")
-
-            # Create a new wallet using wallet_backend
             wallet_data = wallet_backend.create_wallet()
 
             if wallet_data and wallet_data.get("success"):
@@ -198,48 +196,59 @@ async def start_command(update, context):
                 private_key = wallet_data.get("private_key")
                 mnemonic = wallet_data.get("mnemonic")
 
-                # Validate wallet data
-                if not wallet_address or not private_key or not mnemonic:
+                if not all([wallet_address, private_key, mnemonic]):
                     raise ValueError("Incomplete wallet data received from wallet_backend")
 
-                # Add the new user to the database
                 db.add_user(
                     user_id,
                     credits=3,
                     wallet=wallet_address,
                     private_key=private_key,
-                    mnemonic=mnemonic
+                    mnemonic=mnemonic,
                 )
                 logger.info(f"New user {user_id} registered with wallet: {wallet_address}")
 
-                # Enhanced welcome message
-                await update.message.reply_text(
-                    "👻 *Welcome to the Kasper Universe!*\n\n"
-                    "🎉 You've been gifted *3 free credits* to start your journey!\n"
-                    "💼 Your secure wallet has been created, ready to store your Kasper tokens.\n\n"
-                    "✨ Here’s what you can do:\n"
-                    "- Use /topup to add more credits.\n"
-                    "- Use /balance to check your remaining credits.\n\n"
-                    "🌟 Dive into the spooky fun and let’s build the Kasper community together!",
-                    parse_mode="Markdown"
+                # Send message directly via context.bot
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "👻 *Welcome to the Kasper Universe!*\n\n"
+                        "🎉 You've been gifted *3 free credits* to start your journey!\n"
+                        "💼 Your secure wallet has been created.\n\n"
+                        "✨ Commands you can use:\n"
+                        "- /topup: Add more credits.\n"
+                        "- /balance: Check your credits.\n\n"
+                        "🌟 Dive into the fun and let’s grow the Kasper community!"
+                    ),
+                    parse_mode="Markdown",
                 )
             else:
-                error_message = wallet_data.get("error", "Unknown error during wallet creation.")
-                logger.error(f"Wallet creation failed for user {user_id}. Error: {error_message}")
-                await update.message.reply_text("⚠️ Failed to create your wallet. Please try again later.")
+                error_message = wallet_data.get("error", "Unknown wallet creation error.")
+                logger.error(f"Wallet creation failed for user {user_id}: {error_message}")
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="⚠️ Failed to create your wallet. Please try again later."
+                )
         else:
             # If the user exists, greet them with their current balance
             total_credits = user.get("credits", 0)
             logger.info(f"User {user_id} already exists with {total_credits} credits.")
-            await update.message.reply_text(
-                f"👻 *Welcome back, brave spirit!*\n\n"
-                f"You have *{total_credits} credits* remaining.\n"
-                "Use /topup to add more credits and keep the adventure going!"
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"👻 *Welcome back, brave spirit!*\n\n"
+                    f"You have *{total_credits} credits* remaining.\n"
+                    "Use /topup to add more credits and keep the adventure going!"
+                ),
+                parse_mode="Markdown",
             )
     except Exception as e:
         # Log and notify the user about unexpected errors
-        logger.error(f"Error in start_command for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+        logger.error(f"Error in /start command for user {user_id}: {e}", exc_info=True)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ An unexpected error occurred. Please try again later."
+        )
 
 # /balance Command Handler
 async def balance_command(update, context):
