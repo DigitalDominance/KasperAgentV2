@@ -1,3 +1,4 @@
+# main.py
 import os
 import logging
 import asyncio
@@ -384,78 +385,78 @@ async def topup_command(update, context):
         # Start the real-time scan task
         context.chat_data["scan_task"] = asyncio.create_task(scan_with_real_time_processing())
 
-    # /endtopup Command Handler
-    async def endtopup_command(update, context):
-        user_id = update.effective_user.id
-        try:
-            user = await db.get_user(user_id)
-            if not user:
-                await update.message.reply_text("❌ You need to /start first to create a wallet.")
-                return
+# /endtopup Command Handler
+async def endtopup_command(update, context):
+    user_id = update.effective_user.id
+    try:
+        user = await db.get_user(user_id)
+        if not user:
+            await update.message.reply_text("❌ You need to /start first to create a wallet.")
+            return
 
-            wallet_address = user.get("wallet")
-            if not wallet_address:
-                await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-                return
+        wallet_address = user.get("wallet")
+        if not wallet_address:
+            await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
+            return
 
-            # Cancel any active scan
-            if "scan_task" in context.chat_data:
-                scan_task = context.chat_data["scan_task"]
-                if not scan_task.done():
-                    scan_task.cancel()
-                    try:
-                        await scan_task
-                    except asyncio.CancelledError:
-                        logger.info("Scan task successfully cancelled.")
-                del context.chat_data["scan_task"]
-
-            # Fetch transaction data for the wallet address
-            async with httpx.AsyncClient() as client:
+        # Cancel any active scan
+        if "scan_task" in context.chat_data:
+            scan_task = context.chat_data["scan_task"]
+            if not scan_task.done():
+                scan_task.cancel()
                 try:
-                    response = await client.get(
-                        f"{KRC20_API_BASE_URL}/oplist",
-                        params={"address": wallet_address, "tick": "KASPER"}
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    logger.debug(f"API Response for oplist: {data}")
-                except Exception as api_error:
-                    logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
-                    await context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text="❌ Error fetching transaction data. Please try again later."
-                    )
-                    return
+                    await scan_task
+                except asyncio.CancelledError:
+                    logger.info("Scan task successfully cancelled.")
+            del context.chat_data["scan_task"]
 
-                # Calculate credits from new transactions
-                total_credits = 0
-                processed_hashes = await db.get_processed_hashes(user_id)
-                for tx in data.get("result", []):
-                    logger.debug(f"Processing transaction: {tx}")
+        # Fetch transaction data for the wallet address
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{KRC20_API_BASE_URL}/oplist",
+                    params={"address": wallet_address, "tick": "KASPER"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.debug(f"API Response for oplist: {data}")
+            except Exception as api_error:
+                logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Error fetching transaction data. Please try again later."
+                )
+                return
 
-                    hash_rev = tx.get("hashRev")
-                    if hash_rev and hash_rev not in processed_hashes:
-                        kasper_amount = int(tx.get("amt", 0))
-                        credits = kasper_amount // CREDIT_CONVERSION_RATE
-                        if credits > 0:
-                            total_credits += credits
+            # Calculate credits from new transactions
+            total_credits = 0
+            processed_hashes = await db.get_processed_hashes(user_id)
+            for tx in data.get("result", []):
+                logger.debug(f"Processing transaction: {tx}")
 
-                            # Save processed hash and update credits atomically
-                            await db.add_processed_hash(user_id, hash_rev)
-                            new_credits = user.get("credits", 0) + credits
-                            await db.update_user_credits(user_id, new_credits)
+                hash_rev = tx.get("hashRev")
+                if hash_rev and hash_rev not in processed_hashes:
+                    kasper_amount = int(tx.get("amt", 0))
+                    credits = kasper_amount // CREDIT_CONVERSION_RATE
+                    if credits > 0:
+                        total_credits += credits
 
-                if total_credits > 0:
-                    await update.message.reply_text(
-                        f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                        "👻 Use /balance to see your updated credits!",
-                        parse_mode="Markdown"
-                    )
-                else:
-                    await update.message.reply_text("✅ No remaining deposits found.")
-        except Exception as e:
-            logger.error(f"Error in /endtopup command for user {user_id}: {e}", exc_info=True)
-            await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+                        # Save processed hash and update credits atomically
+                        await db.add_processed_hash(user_id, hash_rev)
+                        new_credits = user.get("credits", 0) + credits
+                        await db.update_user_credits(user_id, new_credits)
+
+            if total_credits > 0:
+                await update.message.reply_text(
+                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                    "👻 Use /balance to see your updated credits!",
+                    parse_mode="Markdown"
+                )
+            else:
+                await update.message.reply_text("✅ No remaining deposits found.")
+    except Exception as e:
+        logger.error(f"Error in /endtopup command for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
 
 # /text Command Handler for AI
 async def handle_text_message(update, context):
