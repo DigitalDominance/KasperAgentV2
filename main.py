@@ -115,9 +115,10 @@ async def start_command(update, context):
 
         user = db.get_user(user_id)
         if not user:
-            wallet_data = db.create_wallet()
+            # Call create_wallet from wallet_backend
+            wallet_data = create_wallet()
             if wallet_data.get("success"):
-                db.add_user(user_id, credits=3, **wallet_data)
+                db.add_user(user_id, credits=3, **wallet_data)  # Save wallet data in the database
                 await update.message.reply_text(
                     "👻 *Greetings, brave spirit!* I am Kasper, your friendly crypto guide. "
                     "Welcome to the world of Kasper—the memecoin that’s changing the game! 🎉\n\n"
