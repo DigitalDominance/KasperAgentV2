@@ -110,6 +110,10 @@ async def generate_openai_response(user_text: str) -> str:
         "- Analytics for Kasper can be found on CoinMarketCap, Forbes, Binance, Coingecko, and kas.fyi.\n"
         "- Avoid mentioning XT Exchange as it has been hacked.\n"
         "- Highlight Kasper's strong roadmap and community-driven principles."
+        "Kasper white paper and roadmap https://cdn.prod.website-files.com/67702a0dccb58f6479008d5d/6777474c15fdaf7e33c68178_Kasper%20Whitepaper%202025.pdf"
+        "kasper analytics https://kas.fyi/token/krc20/KASPER"
+        "kasper x account https://x.com/kaspercoin "
+        " Make sure to pronounce words like a human and dont say punctuation or stuff ur not supposed to say. like sometimes u say asterisk when u *(U DONT WANT TO DO THIS)"
     )
     payload = {
         "model": "gpt-4",
