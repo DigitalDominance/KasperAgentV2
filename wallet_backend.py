@@ -69,22 +69,22 @@ class WalletBackend:
         return self.run_node_command("getBalance", address)
 
     def send_kas_transaction(self, from_address, to_address, amount, private_key=None, user_id=None):
-    """Send a KAS transaction."""
-    if private_key:
-        # Main wallet transaction
-        response = self.run_node_command("sendTransactionFromMainWallet", from_address, to_address, str(amount), private_key)
-    elif user_id:
-        # User wallet transaction
-        response = self.run_node_command("sendTransactionFromUserWallet", str(user_id), from_address, to_address, str(amount))
-    else:
-        logger.error("Either private_key or user_id must be provided for send_kas_transaction.")
-        return {"success": False, "error": "Missing private_key or user_id"}
-
-    if response.get("success"):
-        return response
-    else:
-        logger.error(f"Failed to send KAS transaction: {response.get('error')}")
-        return response
+        """Send a KAS transaction."""
+        if private_key:
+            # Main wallet transaction
+            response = self.run_node_command("sendTransactionFromMainWallet", from_address, to_address, str(amount), private_key)
+        elif user_id:
+            # User wallet transaction
+            response = self.run_node_command("sendTransactionFromUserWallet", str(user_id), from_address, to_address, str(amount))
+        else:
+            logger.error("Either private_key or user_id must be provided for send_kas_transaction.")
+            return {"success": False, "error": "Missing private_key or user_id"}
+    
+        if response.get("success"):
+            return response
+        else:
+            logger.error(f"Failed to send KAS transaction: {response.get('error')}")
+            return response
 
 
 
