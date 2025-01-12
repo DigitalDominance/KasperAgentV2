@@ -183,54 +183,63 @@ async def generate_openai_response(user_text: str) -> str:
 async def start_command(update, context):
     """Handles the /start command."""
     user_id = update.effective_user.id
+    logger.info(f"Processing /start command for user_id: {user_id}")
+    try:
+        # Check if the user already exists in the database
+        user = db.get_user(user_id)
+        if not user:
+            logger.info(f"User {user_id} not found. Initiating wallet creation...")
 
-    async with user_locks[user_id]:
-        try:
-            # Check if user already exists in the database
-            user = db.get_user(user_id)
-            if user:
-                await update.message.reply_text(
-                    f"👻 Welcome back, spirit! You have {user.get('credits', 0)} credits remaining. "
-                    "Use /topup to gather more and keep the spooky fun alive!"
-                )
-                return
-
-            # Attempt to create a wallet for the new user
+            # Create a new wallet using wallet_backend
             wallet_data = wallet_backend.create_wallet()
-            if wallet_data.get("success"):
-                # Validate wallet_data fields
-                required_fields = ["receiving_address", "private_key", "mnemonic"]
-                if all(field in wallet_data for field in required_fields):
-                    # Add new user to the database
-                    db.add_user(
-                        user_id,
-                        credits=3,
-                        wallet=wallet_data["receiving_address"],
-                        private_key=wallet_data["private_key"],
-                        mnemonic=wallet_data["mnemonic"]
-                    )
-                    await update.message.reply_text(
-                        "👻 *Welcome, brave spirit!*\n\n"
-                        "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
-                        "🌟 Let the adventure begin! Type /balance to check your credits.",
-                        parse_mode="Markdown"
-                    )
-                else:
-                    logger.error(f"Wallet creation response missing fields: {wallet_data}")
-                    await update.message.reply_text(
-                        "❌ Failed to create your wallet due to incomplete data. Please try again later."
-                    )
+
+            if wallet_data and wallet_data.get("success"):
+                wallet_address = wallet_data.get("receiving_address")
+                private_key = wallet_data.get("private_key")
+                mnemonic = wallet_data.get("mnemonic")
+
+                # Validate wallet data
+                if not wallet_address or not private_key or not mnemonic:
+                    raise ValueError("Incomplete wallet data received from wallet_backend")
+
+                # Add the new user to the database
+                db.add_user(
+                    user_id,
+                    credits=3,
+                    wallet=wallet_address,
+                    private_key=private_key,
+                    mnemonic=mnemonic
+                )
+                logger.info(f"New user {user_id} registered with wallet: {wallet_address}")
+
+                # Enhanced welcome message
+                await update.message.reply_text(
+                    "👻 *Welcome to the Kasper Universe!*\n\n"
+                    "🎉 You've been gifted *3 free credits* to start your journey!\n"
+                    "💼 Your secure wallet has been created, ready to store your Kasper tokens.\n\n"
+                    "✨ Here’s what you can do:\n"
+                    "- Use /topup to add more credits.\n"
+                    "- Use /balance to check your remaining credits.\n\n"
+                    "🌟 Dive into the spooky fun and let’s build the Kasper community together!",
+                    parse_mode="Markdown"
+                )
             else:
                 error_message = wallet_data.get("error", "Unknown error during wallet creation.")
-                logger.error(f"Wallet creation failed: {error_message}")
-                await update.message.reply_text(f"❌ Wallet creation failed: {error_message}")
-        except Exception as e:
-            logger.error(f"Error in /start command: {e}", exc_info=True)
-            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-        finally:
-            # Cleanup user lock after use to prevent memory buildup
-            del user_locks[user_id]
-
+                logger.error(f"Wallet creation failed for user {user_id}. Error: {error_message}")
+                await update.message.reply_text("⚠️ Failed to create your wallet. Please try again later.")
+        else:
+            # If the user exists, greet them with their current balance
+            total_credits = user.get("credits", 0)
+            logger.info(f"User {user_id} already exists with {total_credits} credits.")
+            await update.message.reply_text(
+                f"👻 *Welcome back, brave spirit!*\n\n"
+                f"You have *{total_credits} credits* remaining.\n"
+                "Use /topup to add more credits and keep the adventure going!"
+            )
+    except Exception as e:
+        # Log and notify the user about unexpected errors
+        logger.error(f"Error in start_command for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
 async def balance_command(update, context):
