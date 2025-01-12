@@ -91,29 +91,73 @@ async function checkBalance(address) {
     }
 }
 
-// Send a KAS transaction
-async function sendTransaction(user_id, fromAddress, toAddress, amount) {
-    const privateKeyStr = await getUserPrivateKey(user_id);
-    const privateKey = new PrivateKey(privateKeyStr);
+// Send a KAS transaction from the main wallet
+async function sendTransactionFromMainWallet(fromAddress, toAddress, amount, mainWalletPrivateKey) {
+    try {
+        const privateKey = new PrivateKey(mainWalletPrivateKey);
 
-    await rpc.connect();
-    const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
-    if (!utxos.length) throw new Error("No UTXOs available");
+        await rpc.connect();
+        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
+        if (!utxos.length) throw new Error("No UTXOs available");
 
-    const generator = new Generator({
-        entries: utxos,
-        outputs: [{ address: toAddress, amount: BigInt(amount) }],
-        priorityFee: 1000n,
-        changeAddress: fromAddress,
-    });
+        const generator = new Generator({
+            entries: utxos,
+            outputs: [{ address: toAddress, amount: BigInt(amount) }],
+            priorityFee: 1000n,
+            changeAddress: fromAddress,
+        });
 
-    let txid;
-    while ((pending = await generator.next())) {
-        await pending.sign([privateKey]);
-        txid = await pending.submit(rpc);
+        let txid;
+        let pending;
+        while ((pending = await generator.next())) {
+            await pending.sign([privateKey]);
+            txid = await pending.submit(rpc);
+        }
+
+        console.log(JSON.stringify({ success: true, txid }));
+    } catch (err) {
+        console.error(JSON.stringify({ success: false, error: err.message }));
+    } finally {
+        await rpc.disconnect();
     }
+}
 
-    return { success: true, txid };
+// Send a KAS transaction from a user wallet
+async function sendTransactionFromUserWallet(user_id, fromAddress, toAddress, amount) {
+    try {
+        const db = await connectToDatabase();
+        const user = await db.collection("users").findOne({ user_id });
+        if (!user || !user.private_key) {
+            throw new Error(`Private key not found for user_id: ${user_id}`);
+        }
+        const privateKeyStr = user.private_key;
+
+        const privateKey = new PrivateKey(privateKeyStr);
+
+        await rpc.connect();
+        const { entries: utxos } = await rpc.getUtxosByAddresses([fromAddress]);
+        if (!utxos.length) throw new Error("No UTXOs available");
+
+        const generator = new Generator({
+            entries: utxos,
+            outputs: [{ address: toAddress, amount: BigInt(amount) }],
+            priorityFee: 1000n,
+            changeAddress: fromAddress,
+        });
+
+        let txid;
+        let pending;
+        while ((pending = await generator.next())) {
+            await pending.sign([privateKey]);
+            txid = await pending.submit(rpc);
+        }
+
+        console.log(JSON.stringify({ success: true, txid }));
+    } catch (err) {
+        console.error(JSON.stringify({ success: false, error: err.message }));
+    } finally {
+        await rpc.disconnect();
+    }
 }
 
 // Create the KRC20 script
