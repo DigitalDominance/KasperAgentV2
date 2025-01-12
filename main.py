@@ -243,13 +243,14 @@ async def topup_command(update, context):
 
    message = await update.message.reply_text(
     f"👻 *Spook-tacular Top-Up!*\n\n"
-    f"🔑 **Deposit Address:** `{wallet_address}`\n"
-    f"💸 **Current Rate:** 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-    f"⏳ **Remaining Time:** 5:00\n\n"
-    "✅ *If your deposit is recognized, end the process by using the* /endtopup *command.*\n\n"
-    "💡 *If your deposit is not recognized within 5:00, you can restart by using* /topup *again.*",
-    parse_mode="Markdown"
+    f"🔑 *Deposit Address:* `{wallet_address}`\n"
+    f"💸 *Current Rate:* 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+    f"⏳ *Remaining Time:* 5:00\n\n"
+    "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
+    "💡 _If your deposit is not recognized within 5:00, restart using_ `/topup`.",
+    parse_mode="MarkdownV2",
 )
+
 
     # Cancel any previous scan
     if "scan_task" in context.chat_data:
@@ -273,12 +274,12 @@ async def topup_command(update, context):
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
                             text=(f"👻 *Spook-tacular Top-Up!*\n\n"
-                                  f"🔑 Deposit Address: `{wallet_address}`\n"
-                                  f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-                                  f"{countdown_text}\n\n"
-                                  "✅ *If your deposit is recognized, end the process by using the* /endtopup *command.*\n\n"
-   				  "💡 *If your deposit is not recognized within 5:00, you can restart by using* /topup *again.*",
-                            parse_mode="Markdown",
+				  f"🔑 *Deposit Address:* `{wallet_address}`\n"
+				  f"💸 *Current Rate:* 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+				  f"⏳ *Remaining Time:* 5:00\n\n"
+				  "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
+				  "💡 _If your deposit is not recognized within 5:00, restart using_ `/topup`.",
+			          parse_mode="MarkdownV2",,
                         )
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
