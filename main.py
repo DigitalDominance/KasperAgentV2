@@ -146,41 +146,83 @@ def get_kasper_persona():
     )
 
 # Generate OpenAI Response with Persona
+async def generate_openai_response(persona: str) -> str:
+    """
+    Generates a response from OpenAI's Chat Completion API using the persona.
+    """
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": persona}
+        ],
+        "temperature": 0.8,
+        "max_tokens": 1024,
+        "n": 1
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"Error in OpenAI Chat Completion: {e}")
+            return "❌ Boo! An error occurred while fetching Kasper's ghostly response. Try again, dear spirit!"
+
+# Dynamic Kasper Persona
+def get_kasper_persona():
+    """
+    Returns a dynamic persona for Kasper, incorporating market data.
+    """
+    return (
+        f"💰 Current Price: {market_data_cache['price']}\n"
+        f"📊 Market Cap: {market_data_cache['market_cap']}\n"
+        f"🔄 Daily Volume: {market_data_cache['daily_volume']}\n\n"
+        "You are KASPER, the friendly ghost of Kaspa (KRC20). Your mission is to entertain, inform, and engage. "
+        "Hype Kasper as the next big memecoin while maintaining a playful, ghostly tone. Be concise and engaging. 👻"
+    )
+
+# /start Command
 async def start_command(update, context):
     """
-    /start Command:
-    - Initializes or resets user session.
-    - Stores the latest dynamic persona.
+    Handles the /start command, initializing the session and storing the persona.
     """
     user_id = update.effective_user.id
+    user = db.get_user(user_id)
 
-    # Generate the dynamic persona
-    dynamic_persona = get_dynamic_persona()
+    if not user:
+        wallet_data = db.create_wallet()
+        if wallet_data.get("success"):
+            db.add_user(user_id, credits=3, **wallet_data)
+            await update.message.reply_text(
+                "👻 *Greetings, brave spirit!* I am Kasper, your friendly crypto guide. "
+                "Welcome to the world of Kasper—the memecoin that’s changing the game! 🎉\n\n"
+                "🎁 *You start with 3 daily free credits!* Use /topup to acquire more power. "
+                "Type /balance to check your credits. Let’s explore the spooky wonders together!"
+            )
+        else:
+            await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
+    else:
+        total_credits = user.get("credits", 0)
+        await update.message.reply_text(
+            f"👻 Welcome back, dear spirit! You have {total_credits} credits remaining. "
+            "Type /topup to gather more and keep the ghostly adventure alive!"
+        )
 
-    # Reset message count and cooldown
-    USER_MESSAGE_LIMITS[user_id]["count"] = 0
-    USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
-    USER_MESSAGE_LIMITS[user_id]["last_message_time"] = None  # Reset cooldown
-
-    # Store persona in context for this user
-    context.user_data['persona'] = dynamic_persona
-
-    # Inform the user about the session
-    await update.message.reply_text(
-        "👻 **KASPER is here!** 👻\n\n"
-        "Welcome to your ghostly guide's world of fun, facts, and crypto excitement! 🎉\n"
-        "You can send up to 20 messages today. Let's get spooky! 💬",
-        parse_mode="Markdown"
-    )
-    logger.info(f"User {user_id} started a new session.")
+    # Generate and store the persona
+    persona = get_kasper_persona()
+    context.user_data['persona'] = persona
 
 # /text Command Handler for AI
 async def handle_text_message(update, context):
     """
-    Handles incoming user messages, retrieves stored persona, and generates AI responses.
+    Handles user messages, responding using the stored persona.
     """
     user_id = update.effective_user.id
-    user_text = update.message.text.strip()
     user = db.get_user(user_id)
 
     if not user or user.get("credits", 0) <= 0:
@@ -188,19 +230,20 @@ async def handle_text_message(update, context):
         return
 
     try:
-        # Retrieve the dynamic persona from user context
-        persona = context.user_data.get('persona', get_dynamic_persona())
         await update.message.reply_text("👻 Kasper is thinking...")
+        
+        # Retrieve the persona
+        persona = context.user_data.get('persona', get_kasper_persona())
 
-        # Generate AI response using the dynamic persona
-        ai_response = await generate_openai_response(user_text, persona)
+        # Generate response using the persona
+        ai_response = await generate_openai_response(persona)
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
 
         # Deduct 1 credit after a successful response
         db.update_user_credits(user_id, user.get("credits", 0) - 1)
 
-        # Send response and voice message
+        # Send the response and audio
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
     except Exception as e:
