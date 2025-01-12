@@ -16,7 +16,6 @@ const {
     addressFromScriptPublicKey,
 } = kaspa;
 
-// MongoDB connection setup
 const { MongoClient } = require("mongodb");
 const mongoUri = process.env.MONGODB_URI;
 let db;
@@ -27,22 +26,28 @@ const rpc = new RpcClient({
     networkId: "mainnet",
 });
 
-// Connect to MongoDB
+// Singleton Database Connection
 async function connectToDatabase() {
+    if (db) return db;
+
     try {
         const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
         await client.connect();
         db = client.db("kasperdb");
         console.log("✅ MongoDB connection established");
     } catch (err) {
-        console.error(JSON.stringify({ success: false, error: `Failed to connect to MongoDB: ${err.message}` }));
+        console.error(
+            JSON.stringify({ success: false, error: `Failed to connect to MongoDB: ${err.message}` })
+        );
         process.exit(1);
     }
+    return db;
 }
 
 // Retrieve user's private key from the database
 async function getUserPrivateKey(user_id) {
     try {
+        const db = await connectToDatabase();
         const user = await db.collection("users").findOne({ user_id });
         if (!user || !user.private_key) {
             throw new Error(`Private key not found for user_id: ${user_id}`);
@@ -87,8 +92,6 @@ async function checkBalance(address) {
     try {
         await rpc.connect();
         const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
-        await rpc.disconnect();
-
         const balance = balances[0]?.amount || 0n;
         console.log(
             JSON.stringify({
@@ -99,6 +102,8 @@ async function checkBalance(address) {
         );
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
+    } finally {
+        await rpc.disconnect();
     }
 }
 
@@ -125,8 +130,6 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
             const txid = await pending.submit(rpc);
             console.log(JSON.stringify({ success: true, txid }));
         }
-
-        console.log("Transaction Summary:", generator.summary());
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
     } finally {
@@ -140,7 +143,6 @@ function createKRC20Script(fromAddress, toAddress, amount, tokenSymbol) {
     scriptBuilder.addData(`krc20|transfer|${tokenSymbol}|${amount}|${toAddress}`);
     const script = scriptBuilder.createPayToScriptHashScript();
     const scriptAddress = addressFromScriptPublicKey(script, "mainnet");
-
     return { script, scriptAddress };
 }
 
@@ -156,16 +158,11 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
 
         await rpc.connect();
         const { isSynced } = await rpc.getServerInfo();
-        if (!isSynced) {
-            throw new Error("Node is not synchronized. Please try again later.");
-        }
-
+        if (!isSynced) throw new Error("Node is not synchronized. Please try again later.");
         await context.trackAddresses([fromAddress]);
 
-        // Create the KRC20 script
         const { script, scriptAddress } = createKRC20Script(fromAddress, toAddress, amount, tokenSymbol);
 
-        // Submit the commit transaction
         const generator = new Generator({
             entries: context,
             outputs: [{ address: scriptAddress, amount: 0n }],
@@ -174,48 +171,19 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
         });
 
         let commitTxId;
-        let pending;
         while ((pending = await generator.next())) {
             await pending.sign([privateKey]);
             commitTxId = await pending.submit(rpc);
-            console.log(`Commit transaction submitted with ID: ${commitTxId}`);
         }
 
-        // Wait for the commit transaction to be confirmed
-        console.log("Waiting for commit transaction to be confirmed...");
-        await processor.waitForTransaction(commitTxId);
-
-        // Submit the reveal transaction
-        const revealGenerator = new Generator({
-            entries: context,
-            outputs: [],
-            priorityFee: 1000n,
-            payload: script,
-            changeAddress: fromAddress,
-        });
-
-        let revealTxId;
-        while ((pending = await revealGenerator.next())) {
-            await pending.sign([privateKey]);
-            revealTxId = await pending.submit(rpc);
-            console.log(`Reveal transaction submitted with ID: ${revealTxId}`);
-        }
-
-        console.log(
-            JSON.stringify({
-                success: true,
-                commitTxId,
-                revealTxId,
-            })
-        );
-
-        await processor.shutdown();
+        console.log(JSON.stringify({ success: true, commitTxId }));
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
     } finally {
         await rpc.disconnect();
     }
 }
+
 
 // Command-line interface
 if (require.main === module) {
