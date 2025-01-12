@@ -1,9 +1,7 @@
-# main.py
-import os
+import asyncio
 import logging
 from io import BytesIO
-import sys
-import asyncio
+import os
 
 import httpx
 from pydub import AudioSegment
@@ -476,12 +474,11 @@ def main():
     """Entry point of the application."""
     try:
         loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If the loop is already running, create a task
-            loop.create_task(main_async())
+        if not loop.is_running():
+            loop.run_until_complete(main_async())
         else:
-            # If no loop is running, run the main_async() using asyncio.run()
-            asyncio.run(main_async())
+            loop.create_task(main_async())
+            loop.run_forever()
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
     except Exception as e:
