@@ -371,10 +371,11 @@ async def handle_text_message(update, context):
 
     try:
         await update.message.reply_text("👻 Kasper is thinking...")
-        ai_response = await generate_openai_response(user_text)
+        ai_response = await generate_openai_response(user_text, context)  # Pass `context` here
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
 
+        # Deduct 1 credit after a successful response
         db.update_user_credits(user_id, user.get("credits", 0) - 1)
 
         await update.message.reply_text(ai_response)
@@ -382,6 +383,7 @@ async def handle_text_message(update, context):
     except Exception as e:
         logger.error(f"Error in handle_text_message: {e}")
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
+
 
 
 # Main function
