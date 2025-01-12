@@ -20,6 +20,7 @@ from telegram.ext import (
 
 from db_manager import DBManager
 from wallet_backend import WalletBackend
+from rate_limit import rate_limit  # Assuming you created a rate_limit.py as per earlier instructions
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -180,6 +181,7 @@ async def generate_openai_response(user_text: str) -> str:
             return "❌ Boo! An error occurred while channeling Kasper's ghostly response. Try again, spirit friend!"
 
 # /start Command Handler
+@rate_limit(5)  # Allow 5 commands per minute
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command."""
     user_id = update.effective_user.id
@@ -221,6 +223,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
+@rate_limit(10)  # Allow 10 commands per minute
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /balance command."""
     user_id = update.effective_user.id
@@ -238,6 +241,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /topup Command Handler
+@rate_limit(5)  # Allow 5 commands per minute
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /topup command."""
     user_id = update.effective_user.id
@@ -346,6 +350,7 @@ async def endtopup_job(context: CallbackContext):
         )
 
 # /endtopup Command Handler
+@rate_limit(5)  # Allow 5 commands per minute
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /endtopup command."""
     user_id = update.effective_user.id
@@ -410,6 +415,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /text Command Handler for AI
+@rate_limit(20)  # Allow 20 messages per minute
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles text messages for AI responses."""
     user_id = update.effective_user.id
