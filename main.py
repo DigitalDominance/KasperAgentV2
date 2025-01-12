@@ -9,7 +9,6 @@ import httpx
 from pydub import AudioSegment
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 from db_manager import DBManager
-from wallet_backend import WalletBackend
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -18,8 +17,6 @@ ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
 KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
-MAIN_WALLET_ADDRESS = os.getenv("MAIN_WALLET_ADDRESS", "")
-MAIN_WALLET_PRIVATE_KEY = os.getenv("MAIN_WALLET_PRIVATE_KEY", "")
 
 # Logging setup
 logging.basicConfig(
@@ -30,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 # Initialize dependencies
 db = DBManager()
-wallet = WalletBackend()
 
 USER_MESSAGE_LIMITS = defaultdict(lambda: {
     "count": 0,
@@ -120,29 +116,26 @@ async def start_command(update, context):
     try:
         user = db.get_user(user_id)
         if not user:
-            wallet_data = wallet.create_wallet()
+            wallet_data = db.create_wallet()
             if wallet_data.get("success"):
-                wallet_address = wallet_data["receiving_address"]
-                private_key = wallet_data["private_key"]
-                mnemonic = wallet_data.get("mnemonic", "")
-                db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key, mnemonic=mnemonic)
+                db.add_user(user_id, credits=3, **wallet_data)
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Use /topup to add credits to your account.\n"
-                    f"Your wallet address: {wallet_address}"
+                    "👻 *Welcome, brave spirit!* I am Kasper, your spectral guide.\n\n"
+                    "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
+                    "🌟 Let the adventure begin! Type /balance to check your credits."
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
             total_credits = user.get("credits", 0)
             await update.message.reply_text(
-                f"👻 Welcome back! You have {total_credits} credits in total. Use /topup to add more credits."
+                f"👻 Welcome back, spirit! You have {total_credits} credits remaining. Use /topup to gather more!"
             )
     except Exception as e:
         logger.error(f"Error in start_command: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 
-# /topup Command Handler
 # /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
@@ -152,41 +145,16 @@ async def topup_command(update, context):
         await update.message.reply_text("❌ You need to /start first to create a wallet.")
         return
 
-    wallet_address = user.get("wallet")
-    if not wallet_address:
-        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-        return
-
     await update.message.reply_text(
-        f"👻 Please deposit KASPER to this address: {wallet_address}.\n\n"
-        "✅ After depositing, finalize the process by using the `/endtopup` command.\n\n"
-        "⏳ Note: The top-up scan will automatically stop after 5 minutes."
+        f"👻 *The realm of credits awaits!* Each credit costs {CREDIT_CONVERSION_RATE // (10 ** 8)} KASPER.\n\n"
+        "📩 Deposit to your linked address and finalize with /endtopup.\n\n"
+        "⏳ The process times out in 5 minutes, so be swift!"
     )
 
     context.chat_data["scan_active"] = True
     context.chat_data["scan_timer"] = datetime.utcnow() + timedelta(minutes=5)
 
-    async with httpx.AsyncClient() as client:
-        while context.chat_data.get("scan_active", False):
-            try:
-                params = {"address": wallet_address, "tick": "KASPER"}
-                response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
-                response.raise_for_status()
-                data = response.json()
 
-                for tx in data.get("result", []):
-                    logger.info(f"KASPER transaction detected during scan: {tx}")
-
-                if datetime.utcnow() >= context.chat_data["scan_timer"]:
-                    context.chat_data["scan_active"] = False
-                    await update.message.reply_text("⏳ The top-up scan has timed out. Please use `/topup` to restart.")
-
-            except Exception as e:
-                logger.error(f"Error during top-up scan: {e}")
-
-            await asyncio.sleep(10)
-
-# /endtopup Command Handler
 # /endtopup Command Handler
 async def endtopup_command(update, context):
     user_id = update.effective_user.id
@@ -196,45 +164,30 @@ async def endtopup_command(update, context):
         await update.message.reply_text("❌ You need to /start first to create a wallet.")
         return
 
-    wallet_address = user.get("wallet")
-    if not wallet_address:
-        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-        return
-
-    # Safely stop any ongoing scan
     context.chat_data["scan_active"] = False
 
     try:
         async with httpx.AsyncClient() as client:
-            # Retrieve transactions for the user's wallet
-            response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params={"address": wallet_address, "tick": "KASPER"})
+            response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params={"address": user["wallet"], "tick": "KASPER"})
             response.raise_for_status()
             data = response.json()
 
-            # Calculate credits from new transactions
             total_credits = 0
             processed_hashes = db.get_processed_hashes(user_id)
             for tx in data.get("result", []):
-                hash_rev = tx.get("hashRev")
-                if hash_rev and hash_rev not in processed_hashes:
-                    kasper_amount = int(tx.get("amt", 0))
-                    credits = kasper_amount // CREDIT_CONVERSION_RATE
-                    total_credits += credits
+                if tx["hashRev"] not in processed_hashes:
+                    db.add_processed_hash(user_id, tx["hashRev"])
+                    total_credits += int(tx["amt"]) // CREDIT_CONVERSION_RATE
 
-                    # Save processed hash
-                    db.add_processed_hash(user_id, hash_rev)
+            db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
 
-            if total_credits > 0:
-                # Update user's credits
-                db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
-                await update.message.reply_text(
-                    f"✅ Top-up successful! Added {total_credits} credits to your account."
-                )
-            else:
-                await update.message.reply_text("❌ No new KASPER deposits found.")
+            await update.message.reply_text(
+                f"👻 *Spectacular!* {total_credits} credits have been added to your ethereal pool. Use /balance to see your new total!"
+            )
     except Exception as e:
         logger.error(f"Error in endtopup_command: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+
 
 # /balance Command Handler
 async def balance_command(update, context):
@@ -245,43 +198,17 @@ async def balance_command(update, context):
         await update.message.reply_text("❌ You need to /start first to create a wallet.")
         return
 
-    total_credits = user.get("credits", 0)
-    await update.message.reply_text(f"👻 You have {total_credits} credits available.")
-
-
-# /text Command Handler (to handle direct AI responses)
-async def handle_text_message(update, context):
-    user_id = update.effective_user.id
-    user_text = update.message.text.strip()
-    user = db.get_user(user_id)
-
-    if not user or user.get("credits", 0) <= 0:
-        await update.message.reply_text("❌ You have no credits remaining.")
-        return
-
-    try:
-        await update.message.reply_text("👻 KASPER is thinking...")
-        ai_response = await generate_openai_response(user_text)
-        mp3_audio = await elevenlabs_tts(ai_response)
-        ogg_audio = convert_mp3_to_ogg(mp3_audio)
-        db.update_user_credits(user_id, user["credits"] - 1)
-        await update.message.reply_text(ai_response)
-        await update.message.reply_voice(voice=ogg_audio)
-    except Exception as e:
-        logger.error(f"Error in handle_text_message: {e}")
-        await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
+    await update.message.reply_text(f"👻 You have {user.get('credits', 0)} credits remaining.")
 
 
 # Main function
 def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Add all handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(CommandHandler("balance", balance_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     logger.info("🚀 Starting Kasper AI Bot...")
     application.run_polling()
