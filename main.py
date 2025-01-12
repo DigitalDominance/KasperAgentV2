@@ -143,6 +143,7 @@ async def start_command(update, context):
 
 
 # /topup Command Handler
+# /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
@@ -165,37 +166,25 @@ async def topup_command(update, context):
     context.chat_data["scan_active"] = True
     context.chat_data["scan_timer"] = datetime.utcnow() + timedelta(minutes=5)
 
-    try:
-        async with httpx.AsyncClient() as client:
-            while context.chat_data.get("scan_active", False):
-                try:
-                    response = await client.get(f"{KRC20_API_BASE_URL}/op/{wallet_address}")
-                    response.raise_for_status()
-                    data = response.json()
+    async with httpx.AsyncClient() as client:
+        while context.chat_data.get("scan_active", False):
+            try:
+                params = {"address": wallet_address, "tick": "KASPER"}
+                response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
+                response.raise_for_status()
+                data = response.json()
 
-                    for tx in data.get("result", []):
-                        hash_rev = tx.get("hashRev")
-                        if hash_rev and tx.get("tick") == "KASPER" and hash_rev not in db.get_processed_hashes(user_id):
-                            kasper_amount = int(tx.get("amt", 0))
-                            credits = kasper_amount // CREDIT_CONVERSION_RATE
-                            db.add_processed_hash(user_id, hash_rev)
-                            db.update_user_credits(user_id, user.get("credits", 0) + credits)
-                            await update.message.reply_text(
-                                f"✅ Detected deposit of {kasper_amount / (10 ** 8):.8f} KASPER.\n"
-                                f"Added {credits} credits to your account."
-                            )
+                for tx in data.get("result", []):
+                    logger.info(f"KASPER transaction detected during scan: {tx}")
 
-                    if datetime.utcnow() >= context.chat_data["scan_timer"]:
-                        context.chat_data["scan_active"] = False
-                        await update.message.reply_text("⏳ The top-up scan has timed out. Please use `/topup` to restart.")
-                except Exception as e:
-                    logger.error(f"Error during top-up scan: {e}")
+                if datetime.utcnow() >= context.chat_data["scan_timer"]:
+                    context.chat_data["scan_active"] = False
+                    await update.message.reply_text("⏳ The top-up scan has timed out. Please use `/topup` to restart.")
 
-                await asyncio.sleep(10)
-    except Exception as e:
-        logger.error(f"Error in topup_command: {e}")
-        await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+            except Exception as e:
+                logger.error(f"Error during top-up scan: {e}")
 
+            await asyncio.sleep(10)
 
 # /endtopup Command Handler
 async def endtopup_command(update, context):
@@ -212,34 +201,37 @@ async def endtopup_command(update, context):
         return
 
     context.chat_data["scan_active"] = False
-
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{KRC20_API_BASE_URL}/op/{wallet_address}")
+            params = {"address": wallet_address, "tick": "KASPER"}
+            response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
             response.raise_for_status()
             data = response.json()
 
             total_credits = 0
+            processed_hashes = db.get_processed_hashes(user_id)
+
             for tx in data.get("result", []):
                 hash_rev = tx.get("hashRev")
-                if hash_rev and tx.get("tick") == "KASPER" and hash_rev not in db.get_processed_hashes(user_id):
+                if hash_rev not in processed_hashes:
                     kasper_amount = int(tx.get("amt", 0))
                     credits = kasper_amount // CREDIT_CONVERSION_RATE
                     total_credits += credits
                     db.add_processed_hash(user_id, hash_rev)
 
             if total_credits > 0:
-                db.update_user_credits(user_id,
-                user.get("credits", 0) + total_credits)
+                db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
                 await update.message.reply_text(
-                    f"✅ Finalized top-up! Added {total_credits} credits to your account."
+                    f"✅ Top-up successful! Added {total_credits} credits to your account."
                 )
             else:
                 await update.message.reply_text("❌ No new KASPER deposits found.")
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP error in /endtopup: {e.response.status_code} - {e.response.text}")
+        await update.message.reply_text("❌ API error occurred. Please try again later.")
     except Exception as e:
-        logger.error(f"Error in endtopup_command: {e}")
-        await update.message.reply_text("❌ An error occurred during the finalization process. Please try again later.")
-
+        logger.error(f"Error in /endtopup: {e}")
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
 async def balance_command(update, context):
