@@ -24,21 +24,18 @@ class User(BaseModel):
 
 class DBManager:
     def __init__(self):
-        try:
-            mongo_uri = os.getenv("MONGODB_URI")
-            if not mongo_uri:
-                raise ValueError("MONGODB_URI is not set in the environment variables.")
-            logging.info(f"Connecting to MongoDB at: {mongo_uri}")
-            self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-            self.db = self.client["kasperdb"]
-            self.users = self.db["users"]
-            self.users.create_index("user_id", unique=True)
-        except errors.ServerSelectionTimeoutError as e:
-            logger.error(f"Error connecting to MongoDB: {e}")
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error occurred: {e}")
-            raise
+        # MongoDB URI and Connection Pool Configuration
+        mongodb_uri = os.getenv("MONGODB_URI")
+        self.client = MongoClient(
+            mongodb_uri,
+            maxPoolSize=100,  # Maximum connections in the pool
+            minPoolSize=5,    # Minimum connections to maintain in the pool
+            connectTimeoutMS=10000,  # Timeout for establishing a new connection
+            maxIdleTimeMS=300000,    # Maximum idle time for a connection in the pool
+            waitQueueTimeoutMS=5000  # Time to wait for an available connection
+        )
+        self.db = self.client.get_database("your_database_name")  # Replace with your database name
+        logging.info("MongoDB connection pool initialized.")
 
     def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
