@@ -11,67 +11,49 @@ class WalletBackend:
         self.node_script_path = node_script_path
 
     async def run_node_command(self, command, *args):
-        """Run a Node.js command asynchronously and handle the response."""
+        """Run a Node.js command asynchronously and return its output."""
         try:
-            # Launch the Node.js subprocess
             process = await asyncio.create_subprocess_exec(
                 "node", self.node_script_path, command, *args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-
-            # Wait for the process to complete
             stdout, stderr = await process.communicate()
 
-            # Decode the output
             stdout = stdout.decode().strip()
             stderr = stderr.decode().strip()
 
-            # Log outputs (asynchronously safe)
+            # Log the output for debugging
             if stdout:
                 logger.info(f"[Node.js stdout - {command}]: {stdout}")
             if stderr:
                 logger.error(f"[Node.js stderr - {command}]: {stderr}")
 
-            # Parse and return JSON output
+            # Parse the JSON output
             try:
-                json_output = json.loads(stdout)
-                return json_output
+                return json.loads(stdout)
             except json.JSONDecodeError:
-                # Handle cases where logs might mix with JSON
-                json_start = stdout.find("{")
-                if json_start != -1:
-                    try:
-                        json_output = json.loads(stdout[json_start:])
-                        return json_output
-                    except json.JSONDecodeError:
-                        pass
-                logger.error(f"Invalid JSON output from {command}: {stdout}")
+                logger.error(f"Failed to parse JSON from stdout: {stdout}")
                 return {"success": False, "error": "Invalid JSON in Node.js output"}
 
         except Exception as e:
             logger.error(f"Error running Node.js command '{command}': {e}")
             return {"success": False, "error": str(e)}
 
-        finally:
-            # Ensure the process is terminated
-            if process.returncode is None:
-                process.kill()
-                await process.wait()
-
     async def create_wallet(self):
         """Create a new wallet."""
-        logger.info("Starting wallet creation...")
-        wallet_data = await self.run_node_command("createWallet")
-        if wallet_data.get("success"):
-            # Validate required fields
-            required_fields = ["mnemonic", "receivingAddress", "changeAddress", "xPrv"]
-            missing_fields = [field for field in required_fields if field not in wallet_data]
-
-            if missing_fields:
-                logger.error(f"Missing fields in wallet creation response: {missing_fields}")
-                return {"success": False, "error": "Incomplete wallet data"}
-
+        logger.info("Creating a new wallet...")
+        result = await self.run_node_command("createWallet")
+        if result.get("success"):
+            return {
+                "success": True,
+                "mnemonic": result.get("mnemonic"),
+                "receiving_address": result.get("receivingAddress"),
+                "change_address": result.get("changeAddress"),
+                "private_key": result.get("xPrv"),
+            }
+        logger.error(f"Failed to create wallet: {result.get('error', 'Unknown error')}")
+        return {"success": False, "error": result.get("error", "Unknown error")}
             # Return wallet details
             logger.info(f"Wallet successfully created: {wallet_data}")
             return {
