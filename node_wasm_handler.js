@@ -14,6 +14,8 @@ const {
     UtxoProcessor,
     UtxoContext,
     Generator,
+    addressFromScriptPublicKey,
+    ScriptBuilder,
 } = kaspa;
 
 // MongoDB connection setup
@@ -43,19 +45,10 @@ async function connectToDatabase() {
 // Retrieve user's private key from the database
 async function getUserPrivateKey(user_id) {
     try {
-        if (typeof user_id !== "number") {
-            throw new Error("user_id must be an integer.");
-        }
-
         const user = await db.collection("users").findOne({ user_id });
-        if (!user) {
-            throw new Error(`No user found with user_id: ${user_id}`);
+        if (!user || !user.private_key) {
+            throw new Error(`Private key not found for user_id: ${user_id}`);
         }
-
-        if (!user.private_key || typeof user.private_key !== "string") {
-            throw new Error(`Private key is missing or invalid for user_id: ${user_id}`);
-        }
-
         return user.private_key;
     } catch (err) {
         throw new Error(`Error retrieving private key for user_id ${user_id}: ${err.message}`);
@@ -151,7 +144,7 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
 
         const processor = new UtxoProcessor({ rpc, networkId: "mainnet" });
         await processor.start();
-        const context = await new UtxoContext({ processor });
+        const context = new UtxoContext({ processor });
 
         await rpc.connect();
         let { isSynced } = await rpc.getServerInfo();
@@ -161,11 +154,13 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
 
         await context.trackAddresses([fromAddress]);
 
-        const payload = `krc20|${tokenSymbol}|${BigInt(amount)}`;
+        const scriptBuilder = new ScriptBuilder();
+        scriptBuilder.addData(`krc20|transfer|${tokenSymbol}|${BigInt(amount)}|${toAddress}`);
+        const scriptAddress = addressFromScriptPublicKey(scriptBuilder.createPayToScriptHashScript(), "mainnet");
+
         const generator = new Generator({
             entries: context,
-            outputs: [{ address: toAddress, amount: 0n }],
-            payload,
+            outputs: [{ address: scriptAddress, amount: 0n }],
             priorityFee: 1000n,
             changeAddress: fromAddress,
         });
