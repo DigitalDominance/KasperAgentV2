@@ -2,28 +2,37 @@
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const kaspa = require("./wasm/kaspa");
-const {
-    RpcClient,
-    Resolver,
-    Mnemonic,
-    XPrv,
-    PrivateKey,
-    NetworkType,
-} = kaspa;
+const { RpcClient, Resolver, Mnemonic, XPrv, NetworkType } = kaspa;
 
 const { MongoClient } = require("mongodb");
 const mongoUri = process.env.MONGODB_URI;
+
 let db;
+let rpc;
 
 // Initialize RPC client
-const rpc = new RpcClient({
-    resolver: new Resolver(),
-    networkId: "mainnet",
-});
+async function initializeRpcClient() {
+    if (rpc && rpc.isConnected) return rpc;
+
+    console.log("Initializing RPC client...");
+    rpc = new RpcClient({
+        resolver: new Resolver(),
+        networkId: "mainnet",
+    });
+
+    try {
+        await rpc.connect();
+        console.log("RPC client connected successfully.");
+    } catch (err) {
+        console.error(`Failed to connect RPC client: ${err.message}`);
+        throw new Error("Could not connect to Kaspa RPC.");
+    }
+
+    return rpc;
+}
 
 // Singleton Database Connection
 let dbPromise = null;
-
 async function connectToDatabase() {
     if (dbPromise) return dbPromise;
 
@@ -46,25 +55,29 @@ async function connectToDatabase() {
 
 // Retrieve user's private key from the database
 async function getUserPrivateKey(user_id) {
-    const db = await connectToDatabase();
-    const user = await db.collection("users").findOne({ user_id });
-    if (!user || !user.private_key) {
-        throw new Error(`Private key not found for user_id: ${user_id}`);
+    try {
+        const db = await connectToDatabase();
+        console.log(`Fetching private key for user_id: ${user_id}`);
+
+        const user = await db.collection("users").findOne({ user_id });
+        if (!user || !user.private_key) {
+            throw new Error(`Private key not found for user_id: ${user_id}`);
+        }
+
+        console.log("Private key retrieved successfully.");
+        return { success: true, privateKey: user.private_key };
+    } catch (err) {
+        console.error(`Error fetching private key: ${err.message}`);
+        return { success: false, error: err.message };
     }
-    return user.private_key;
 }
 
 // Create a new wallet
-// Create a new wallet with detailed logs
 async function createWallet(retries = 3) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
             console.log(`Starting wallet creation (Attempt ${attempt})...`);
-            const startTime = Date.now();
-
-            console.log("Connecting to RPC client...");
-            await rpc.connect();
-            console.log("RPC client connected.");
+            const rpcClient = await initializeRpcClient();
 
             const mnemonic = Mnemonic.random();
             console.log("Mnemonic generated.");
@@ -85,9 +98,6 @@ async function createWallet(retries = 3) {
             const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
             console.log(`Change address derived: ${changeAddress.toString()}`);
 
-            const endTime = Date.now();
-            console.log(`Wallet creation completed in ${endTime - startTime}ms`);
-
             return {
                 success: true,
                 mnemonic: mnemonic.phrase,
@@ -100,9 +110,6 @@ async function createWallet(retries = 3) {
             if (attempt === retries) {
                 return { success: false, error: "Max retries reached during wallet creation." };
             }
-        } finally {
-            console.log("Disconnecting RPC client...");
-            await rpc.disconnect();
         }
     }
 }
@@ -110,11 +117,10 @@ async function createWallet(retries = 3) {
 // Check balance of an address
 async function checkBalance(address) {
     try {
-        console.log("Connecting to RPC client...");
-        await rpc.connect();
-
+        const rpcClient = await initializeRpcClient();
         console.log(`Checking balance for address: ${address}`);
-        const { balances } = await rpc.getBalancesByAddresses({ addresses: [address] });
+
+        const { balances } = await rpcClient.getBalancesByAddresses({ addresses: [address] });
         const balance = balances[0]?.amount || 0n;
 
         console.log(`Balance retrieved: ${balance.toString()}`);
@@ -126,9 +132,6 @@ async function checkBalance(address) {
     } catch (err) {
         console.error(`Error checking balance: ${err.message}`);
         return { success: false, error: err.message };
-    } finally {
-        console.log("Disconnecting RPC client...");
-        await rpc.disconnect();
     }
 }
 
@@ -138,8 +141,6 @@ if (require.main === module) {
 
     (async () => {
         try {
-            await connectToDatabase();
-
             switch (command) {
                 case "createWallet":
                     console.log(JSON.stringify(await createWallet()));
@@ -148,13 +149,9 @@ if (require.main === module) {
                     if (!args[0]) throw new Error("Address is required for checkBalance");
                     console.log(JSON.stringify(await checkBalance(args[0])));
                     break;
-                case "sendTransaction":
-                    if (args.length < 4) throw new Error("Invalid arguments for sendTransaction");
-                    console.log(JSON.stringify(await sendTransaction(parseInt(args[0]), args[1], args[2], args[3])));
-                    break;
-                case "sendKRC20Transaction":
-                    if (args.length < 5) throw new Error("Invalid arguments for sendKRC20Transaction");
-                    console.log(JSON.stringify(await sendKRC20Transaction(parseInt(args[0]), args[1], args[2], args[3], args[4])));
+                case "getUserPrivateKey":
+                    if (!args[0]) throw new Error("User ID is required for getUserPrivateKey");
+                    console.log(JSON.stringify(await getUserPrivateKey(args[0])));
                     break;
                 default:
                     console.log(JSON.stringify({ success: false, error: "Invalid command" }));
