@@ -297,15 +297,23 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 
-async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
-    """Automatically ends the top-up process after a specified time."""
-    job = context.job
-    user_id = job.data["user_id"]
-    receiving_address = job.data["receiving_address"]
-
-    logger.info(f"Ending top-up process for user {user_id}.")
-
+# /endtopup Command Handler
+@rate_limit(5)  # Allows 5 invocations per minute
+async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /endtopup command."""
+    user_id = update.effective_user.id
+    logger.info(f"Received /endtopup command from user {user_id}")
     try:
+        user = await db.get_user(user_id)
+        if not user:
+            await update.message.reply_text("❌ You need to /start first to create a wallet.")
+            return
+
+        receiving_address = user.get("receiving_address")
+        if not receiving_address:
+            await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
+            return
+
         # Fetch transaction data
         async with httpx.AsyncClient() as client:
             response = await client.get(
@@ -337,33 +345,24 @@ async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
             new_credits = user.get("credits", 0) + total_credits
             await db.update_user_credits(user_id, new_credits)
             # Notify user of successful deposit
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                    "👻 Use /balance to see your updated credits!"
-                ),
+            await update.message.reply_text(
+                f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                "👻 Use /balance to see your updated credits!",
                 parse_mode="Markdown"
             )
             logger.info(f"User {user_id} credits updated by {total_credits} credits.")
         else:
             # Notify user that no new deposits were found
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    "❌ *Top-Up Time Expired!*\n\n"
-                    "No new KASPER deposits were detected during the top-up period. Please use /topup to try again."
-                ),
+            await update.message.reply_text(
+                "❌ No new KASPER deposits found.",
                 parse_mode="Markdown"
             )
-            logger.info(f"No new deposits found for user {user_id} during top-up.")
+            logger.info(f"No new deposits found for user {user_id}.")
 
     except Exception as e:
-        logger.error(f"Error in endtopup_job for user {user_id}: {e}", exc_info=True)
-        await context.bot.send_message(
-            chat_id=user_id,
-            text="❌ An unexpected error occurred during the top-up process. Please try again later."
-        )
+        logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 # /text Command Handler for AI
 @rate_limit(20)  # Allows 20 invocations per minute
@@ -395,6 +394,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
+
 # Main asynchronous function
 async def safe_shutdown():
     """Safely close all resources during shutdown."""
@@ -405,6 +405,7 @@ async def safe_shutdown():
             logger.info("Database connection closed.")
     except Exception as e:
         logger.error(f"Error during shutdown: {e}", exc_info=True)
+
 
 # Main asynchronous function
 async def main_async():
@@ -437,6 +438,7 @@ async def main_async():
         await safe_shutdown()
         logger.info("Bot shutdown complete.")
 
+
 # Entry point
 def main():
     """Entry point of the application."""
@@ -455,6 +457,7 @@ def main():
     finally:
         asyncio.run(safe_shutdown())
         logger.info("Application exited gracefully.")
+
 
 if __name__ == "__main__":
     main()
