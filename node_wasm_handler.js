@@ -16,11 +16,10 @@ const rpc = new RpcClient({
     networkId: "mainnet",
 });
 
-async function connectRpc() {
-    if (!rpc.isConnected) {
-        await rpc.connect();
-    }
-}
+rpc.connect().then(() => console.log("RPC connected successfully!")).catch(err => {
+    console.error("RPC connection failed:", err.message);
+});
+
 
 app.post("/execute", async (req, res) => {
     const { command, args } = req.body;
