@@ -9,11 +9,6 @@ const {
     XPrv,
     PrivateKey,
     NetworkType,
-    UtxoProcessor,
-    UtxoContext,
-    Generator,
-    ScriptBuilder,
-    addressFromScriptPublicKey,
 } = kaspa;
 
 const { MongoClient } = require("mongodb");
