@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class WalletBackend:
-    def __init__(self, api_base_url="http://localhost:3000"):
+    def __init__(self, api_base_url="https://kasper-agentv2-eef7ed25de40.herokuapp.com"):
         self.api_base_url = api_base_url
 
     async def run_node_command(self, command, *args):
