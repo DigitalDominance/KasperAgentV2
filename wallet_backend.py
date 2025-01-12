@@ -1,4 +1,4 @@
-import asyncio
+import subprocess
 import json
 import logging
 
@@ -10,22 +10,16 @@ class WalletBackend:
     def __init__(self, node_script_path="node_wasm_handler.js"):
         self.node_script_path = node_script_path
 
-    async def run_node_command(self, command, *args):
-        """Run a Node.js command asynchronously and handle the response."""
+    def run_node_command(self, command, *args):
+        """Run a Node.js command and handle the response."""
         try:
-            process = await asyncio.create_subprocess_exec(
-                "node",
-                self.node_script_path,
-                command,
-                *args,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+            result = subprocess.run(
+                ["node", self.node_script_path, command, *args],
+                capture_output=True,
+                text=True,
             )
-
-            stdout, stderr = await process.communicate()
-
-            stdout = stdout.decode().strip()
-            stderr = stderr.decode().strip()
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
 
             # Log Node.js outputs
             if stdout:
@@ -52,9 +46,9 @@ class WalletBackend:
             logger.error(f"Error running {command}: {e}")
             return {"success": False, "error": str(e)}
 
-    async def create_wallet(self):
-        """Create a new wallet asynchronously."""
-        wallet_data = await self.run_node_command("createWallet")
+    def create_wallet(self):
+        """Create a new wallet."""
+        wallet_data = self.run_node_command("createWallet")
         if wallet_data.get("success"):
             try:
                 return {
@@ -70,65 +64,66 @@ class WalletBackend:
         else:
             return wallet_data
 
-    async def get_balance(self, address):
-        """Get the balance of a specific address asynchronously."""
-        return await self.run_node_command("getBalance", address)
+    def get_balance(self, address):
+        """Get the balance of a specific address."""
+        return self.run_node_command("getBalance", address)
 
-    async def send_kas_transaction(self, from_address, to_address, amount, private_key=None, user_id=None):
-        """Send a KAS transaction asynchronously."""
+    def send_kas_transaction(self, from_address, to_address, amount, private_key=None, user_id=None):
+        """Send a KAS transaction."""
         if private_key:
             # Main wallet transaction
-            response = await self.run_node_command("sendTransactionFromMainWallet", from_address, to_address, str(amount), private_key)
+            response = self.run_node_command("sendTransactionFromMainWallet", from_address, to_address, str(amount), private_key)
         elif user_id:
             # User wallet transaction
-            response = await self.run_node_command("sendTransactionFromUserWallet", str(user_id), from_address, to_address, str(amount))
+            response = self.run_node_command("sendTransactionFromUserWallet", str(user_id), from_address, to_address, str(amount))
         else:
             logger.error("Either private_key or user_id must be provided for send_kas_transaction.")
             return {"success": False, "error": "Missing private_key or user_id"}
-
+    
         if response.get("success"):
             return response
         else:
             logger.error(f"Failed to send KAS transaction: {response.get('error')}")
             return response
 
-    async def send_krc20_transaction(self, from_address, to_address, amount, token_symbol="KASPER", private_key=None, user_id=None):
-        """Send a KRC20 token transaction asynchronously."""
+
+
+    def send_krc20_transaction(self, from_address, to_address, amount, token_symbol="KASPER", private_key=None, user_id=None):
+        """Send a KRC20 token transaction."""
         if user_id:
             # Retrieve private key for the user from Node.js
-            response = await self.run_node_command(
+            response = self.run_node_command(
                 "sendKRC20Transaction", str(user_id), from_address, to_address, str(amount), token_symbol
             )
         elif private_key:
             # Use provided private key (e.g., from environment variables)
-            response = await self.run_node_command(
+            response = self.run_node_command(
                 "sendKRC20Transaction", from_address, to_address, str(amount), private_key, token_symbol
             )
         else:
             logger.error("Either user_id or private_key must be provided for send_krc20_transaction.")
             return {"success": False, "error": "Missing user_id or private_key"}
-
+    
         if response.get("success"):
             return response
         else:
             logger.error(f"Failed to send KRC20 transaction: {response.get('error')}")
             return response
 
+
+
 # Example usage
 if __name__ == "__main__":
-    async def main():
-        backend = WalletBackend()
+    backend = WalletBackend()
 
-        # Example: Create a wallet
-        wallet = await backend.create_wallet()
-        print(wallet)
+    # Example: Create a wallet
+    wallet = backend.create_wallet()
+    print(wallet)
 
-        # Example: Get balance
-        # balance = await backend.get_balance("kaspa:example-address")
-        # print(balance)
+    # Example: Get balance
+    # balance = backend.get_balance("kaspa:example-address")
+    # print(balance)
 
-        # Example: Send a transaction
-        # tx = await backend.send_kas_transaction("from_address", "to_address", 10, "private_key")
-        # print(tx)
-
-    asyncio.run(main())
+    # Example: Send a transaction
+    # tx = backend.send_transaction("from_address", "to_address", 10, "private_key")
+    # print(tx)
