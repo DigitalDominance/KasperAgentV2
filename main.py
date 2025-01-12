@@ -251,15 +251,21 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
 
-        wallet_address = user.get("wallet")
+        # Update field name from 'wallet' to 'receiving_address'
+        receiving_address = user.get("receiving_address")
+        if not receiving_address:
+            await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
+            return
+
         rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
         message = await update.message.reply_text(
             f"👻 *Spook-tacular Top-Up!*\n\n"
-            f"🔑 Deposit Address: `{wallet_address}`\n"
+            f"🔑 Deposit Address: `{receiving_address}`\n"
             f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
             f"⏳ Remaining Time: 5:00\n\n"
-            "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00.",
+            "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n"
+            "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00.",
             parse_mode="Markdown",
         )
 
@@ -270,7 +276,7 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 old_task.cancel()
                 logger.info(f"Cancelled previous scan task for user {user_id}.")
 
-        # Start a new scan with real-time deposit processing
+        # Define the new scan task
         async def scan_with_real_time_processing():
             try:
                 end_time = datetime.utcnow() + timedelta(minutes=5)
@@ -285,11 +291,14 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await context.bot.edit_message_text(
                                 chat_id=update.effective_chat.id,
                                 message_id=message.message_id,
-                                text=(f"👻 *Spook-tacular Top-Up!*\n\n"
-                                      f"🔑 Deposit Address: `{wallet_address}`\n"
-                                      f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-                                      f"{countdown_text}\n\n"
-                                      "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00."),
+                                text=(
+                                    f"👻 *Spook-tacular Top-Up!*\n\n"
+                                    f"🔑 Deposit Address: `{receiving_address}`\n"
+                                    f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+                                    f"{countdown_text}\n\n"
+                                    "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n"
+                                    "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00."
+                                ),
                                 parse_mode="Markdown",
                             )
                         except Exception as edit_error:
@@ -299,7 +308,7 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         try:
                             response = await client.get(
                                 f"{KRC20_API_BASE_URL}/oplist",
-                                params={"address": wallet_address, "tick": "KASPER"}
+                                params={"address": receiving_address, "tick": "KASPER"}
                             )
                             response.raise_for_status()
                             data = response.json()
@@ -332,9 +341,11 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                         # Notify user of successful deposit
                                         await context.bot.send_message(
                                             chat_id=update.effective_chat.id,
-                                            text=(f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
-                                                  f"to your account! Your spectral wallet is growing! 🎉\n\n"
-                                                  "👻 Use /balance to see your updated credits!"),
+                                            text=(
+                                                f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
+                                                f"to your account! Your spectral wallet is growing! 🎉\n\n"
+                                                "👻 Use /balance to see your updated credits!"
+                                            ),
                                             parse_mode="Markdown"
                                         )
                         except Exception as process_error:
@@ -346,18 +357,28 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.edit_message_text(
                         chat_id=update.effective_chat.id,
                         message_id=message.message_id,
-                        text=f"👻 *Top-Up Time Expired!*\n\n"
-                             "The scan has timed out. Please use /topup to restart.",
+                        text=(
+                            "👻 *Top-Up Time Expired!*\n\n"
+                            "The scan has timed out. Please use /topup to restart."
+                        ),
                         parse_mode="Markdown"
                     )
             except asyncio.CancelledError:
                 logger.info(f"Scan task canceled for user {user_id}.")
             except Exception as e:
                 logger.error(f"Error during scan: {e}", exc_info=True)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ An unexpected error occurred during the top-up process. Please try again later."
+                )
 
-        # Start the real-time scan task
+        # Start the new scan task
         context.chat_data["scan_task"] = asyncio.create_task(scan_with_real_time_processing())
         logger.info(f"Started new scan task for user {user_id}.")
+
+    except Exception as e:
+        logger.error(f"Error in topup_command for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /endtopup Command Handler
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
