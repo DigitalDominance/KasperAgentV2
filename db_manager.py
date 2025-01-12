@@ -16,9 +16,10 @@ class User(BaseModel):
     credits: int
     wallet: str
     private_key: str
-    mnemonic: Optional[str] = None  # Added to store the mnemonic for wallet recovery
+    mnemonic: Optional[str] = None  # To store the mnemonic for wallet recovery
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_active: Optional[datetime] = None
+
 
 class DBManager:
     def __init__(self):
@@ -30,7 +31,9 @@ class DBManager:
             self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
             self.db = self.client["kasperdb"]
             self.users = self.db["users"]
+            self.hashes = self.db["processed_hashes"]  # Collection for processed hashes
             self.users.create_index("user_id", unique=True)
+            self.hashes.create_index("user_id")
         except errors.ServerSelectionTimeoutError as e:
             logging.error(f"Error connecting to MongoDB: {e}")
             raise
@@ -70,8 +73,29 @@ class DBManager:
             logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
+    def add_processed_hash(self, user_id: int, hash_rev: str):
+        """Add a processed hash for a user."""
+        try:
+            self.hashes.update_one(
+                {"user_id": user_id},
+                {"$addToSet": {"hashes": hash_rev}},
+                upsert=True
+            )
+            logger.info(f"Processed hash {hash_rev} added for user {user_id}.")
+        except Exception as e:
+            logger.error(f"Error adding processed hash for user {user_id}: {e}")
+
+    def get_processed_hashes(self, user_id: int) -> set:
+        """Get processed hashes for a user."""
+        try:
+            record = self.hashes.find_one({"user_id": user_id})
+            return set(record.get("hashes", [])) if record else set()
+        except Exception as e:
+            logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
+            return set()
+
     def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
-        """Update a user's wallet information."""
+        """Update a user's wallet information and mnemonic."""
         try:
             update_data = {
                 "wallet": wallet,
@@ -127,23 +151,6 @@ class DBManager:
                 logger.warning(f"User {user_id} not found in the database.")
         except Exception as e:
             logger.error(f"Error deleting user {user_id}: {e}")
-
-    def bulk_update_credits(self, updates: List[dict]):
-        """Bulk update user credits."""
-        try:
-            operations = [
-                {
-                    "updateOne": {
-                        "filter": {"user_id": update["user_id"]},
-                        "update": {"$set": {"credits": update["credits"], "last_active": datetime.utcnow()}},
-                    }
-                }
-                for update in updates
-            ]
-            result = self.users.bulk_write(operations)
-            logger.info(f"Bulk update completed. Matched: {result.matched_count}, Modified: {result.modified_count}")
-        except Exception as e:
-            logger.error(f"Error performing bulk update: {e}")
 
     def close_connection(self):
         """Close the MongoDB connection."""
