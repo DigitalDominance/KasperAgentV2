@@ -297,6 +297,7 @@ async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
         # Calculate credits from new transactions
         total_credits = 0
         processed_hashes = await db.get_processed_hashes(user_id)
+        user = await db.get_user(user_id)
         for tx in data.get("result", []):
             logger.info(f"Processing transaction: {tx}")
 
@@ -372,6 +373,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Calculate credits from new transactions
         total_credits = 0
         processed_hashes = await db.get_processed_hashes(user_id)
+        user = await db.get_user(user_id)
         for tx in data.get("result", []):
             logger.info(f"Processing transaction: {tx}")
 
@@ -445,19 +447,20 @@ async def main_async():
         await db.init_db()
 
         # Initialize Telegram bot application
-        async with ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build() as application:
-            # Register command handlers
-            application.add_handler(CommandHandler("start", start_command))
-            application.add_handler(CommandHandler("balance", balance_command))
-            application.add_handler(CommandHandler("topup", topup_command))
-            application.add_handler(CommandHandler("endtopup", endtopup_command))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+        application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-            # Schedule periodic market data updates using JobQueue
-            application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
+        # Register command handlers
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("balance", balance_command))
+        application.add_handler(CommandHandler("topup", topup_command))
+        application.add_handler(CommandHandler("endtopup", endtopup_command))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
-            logger.info("🚀 Starting Kasper AI Bot...")
-            await application.run_polling()
+        # Schedule periodic market data updates using JobQueue
+        application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
+
+        logger.info("🚀 Starting Kasper AI Bot...")
+        await application.run_polling()
 
     except Exception as e:
         logger.error(f"Error during main_async: {e}", exc_info=True)
