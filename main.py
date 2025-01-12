@@ -446,6 +446,17 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
 # Main asynchronous function
+async def safe_shutdown():
+    """Safely close all resources during shutdown."""
+    try:
+        if db.client:
+            logger.info("Closing database connection...")
+            await db.close_connection()
+            logger.info("Database connection closed.")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}", exc_info=True)
+
+# Main asynchronous function
 async def main_async():
     """Main asynchronous function to set up the bot."""
     try:
@@ -472,9 +483,8 @@ async def main_async():
         logger.error(f"Error during main_async: {e}", exc_info=True)
 
     finally:
-        logger.info("Shutting down...")
-        # Close the database connection
-        await db.close_connection()
+        logger.info("Shutting down bot...")
+        await safe_shutdown()
         logger.info("Bot shutdown complete.")
 
 # Entry point
@@ -485,12 +495,16 @@ def main():
         if not loop.is_running():
             loop.run_until_complete(main_async())
         else:
+            logger.warning("Event loop already running. Running main_async as a task.")
             loop.create_task(main_async())
             loop.run_forever()
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
     except Exception as e:
         logger.error(f"Error in main: {e}", exc_info=True)
+    finally:
+        asyncio.run(safe_shutdown())
+        logger.info("Application exited gracefully.")
 
 if __name__ == "__main__":
     main()
