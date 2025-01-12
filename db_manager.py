@@ -1,6 +1,6 @@
-from pymongo import MongoClient, errors
-from pymongo.collection import ReturnDocument
-from pydantic import BaseModel, Field
+# db_manager.py
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, List
 import logging
 import os
@@ -30,10 +30,10 @@ class DBManager:
             if not mongo_uri:
                 raise ValueError("MONGODB_URI is not set in the environment variables.")
             
-            logging.info(f"Connecting to MongoDB at: {mongo_uri}")
+            logger.info(f"Connecting to MongoDB at: {mongo_uri}")
             
-            # Initialize MongoClient with connection pool configurations
-            self.client = MongoClient(
+            # Initialize AsyncIOMotorClient
+            self.client = AsyncIOMotorClient(
                 mongo_uri,
                 serverSelectionTimeoutMS=5000,
                 maxPoolSize=100,  # Adjust pool size based on your needs
@@ -47,16 +47,21 @@ class DBManager:
             self.users = self.db["users"]
 
             # Ensure user_id is unique in the collection
-            self.users.create_index("user_id", unique=True)
+            asyncio.get_event_loop().run_until_complete(self.ensure_indexes())
             
-            logging.info("MongoDB connection pool initialized.")
-        except errors.ServerSelectionTimeoutError as e:
-            logging.error(f"Error connecting to MongoDB: {e}")
-            raise
+            logger.info("MongoDB connection pool initialized.")
         except Exception as e:
-            logging.error(f"Unexpected error occurred: {e}")
+            logger.error(f"Error initializing DBManager: {e}")
             raise
-    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
+    
+    async def ensure_indexes(self):
+        try:
+            await self.users.create_index("user_id", unique=True)
+            logger.info("Ensured unique index on user_id.")
+        except Exception as e:
+            logger.error(f"Error creating indexes: {e}")
+
+    async def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
         try:
             user_data = User(
@@ -66,7 +71,7 @@ class DBManager:
                 private_key=private_key,
                 mnemonic=mnemonic,
             ).dict()
-            self.users.insert_one(user_data)
+            await self.users.insert_one(user_data)
             logger.info(f"User {user_id} added to the database.")
         except ValidationError as e:
             logger.error(f"Validation error while adding user: {e}")
@@ -75,10 +80,10 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error adding user {user_id}: {e}")
 
-    def get_user(self, user_id: int) -> Optional[dict]:
+    async def get_user(self, user_id: int) -> Optional[dict]:
         """Retrieve a user from the database."""
         try:
-            user = self.users.find_one({"user_id": user_id})
+            user = await self.users.find_one({"user_id": user_id})
             if user:
                 logger.info(f"User {user_id} retrieved from the database.")
                 return user
@@ -88,27 +93,30 @@ class DBManager:
             logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
-    def add_processed_hash(self, user_id: int, hash_rev: str):
+    async def add_processed_hash(self, user_id: int, hash_rev: str):
         """Add a processed transaction hash to the user's record."""
         try:
-            self.users.update_one(
+            result = await self.users.update_one(
                 {"user_id": user_id},
                 {"$addToSet": {"processed_hashes": hash_rev}},
             )
-            logger.info(f"Added processed hash for user {user_id}: {hash_rev}")
+            if result.modified_count > 0:
+                logger.info(f"Added processed hash for user {user_id}: {hash_rev}")
+            else:
+                logger.info(f"Processed hash {hash_rev} already exists for user {user_id}.")
         except Exception as e:
             logger.error(f"Error adding processed hash for user {user_id}: {e}")
 
-    def get_processed_hashes(self, user_id: int) -> List[str]:
+    async def get_processed_hashes(self, user_id: int) -> List[str]:
         """Retrieve processed hashes for a user."""
         try:
-            user = self.users.find_one({"user_id": user_id}, {"processed_hashes": 1})
+            user = await self.users.find_one({"user_id": user_id}, {"processed_hashes": 1})
             return user.get("processed_hashes", []) if user else []
         except Exception as e:
             logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
             return []
 
-    def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: str):
+    async def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: str):
         """Update a user's wallet information and mnemonic."""
         try:
             update_data = {
@@ -117,7 +125,7 @@ class DBManager:
                 "mnemonic": mnemonic,
                 "last_active": datetime.utcnow(),
             }
-            updated_user = self.users.find_one_and_update(
+            updated_user = await self.users.find_one_and_update(
                 {"user_id": user_id},
                 {"$set": update_data},
                 return_document=ReturnDocument.AFTER,
@@ -129,10 +137,10 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error updating wallet for user {user_id}: {e}")
 
-    def update_user_credits(self, user_id: int, credits: int):
+    async def update_user_credits(self, user_id: int, credits: int):
         """Update a user's credits."""
         try:
-            updated_user = self.users.find_one_and_update(
+            updated_user = await self.users.find_one_and_update(
                 {"user_id": user_id},
                 {"$set": {"credits": credits, "last_active": datetime.utcnow()}},
                 return_document=ReturnDocument.AFTER,
@@ -144,21 +152,24 @@ class DBManager:
         except Exception as e:
             logger.error(f"Error updating credits for user {user_id}: {e}")
 
-    def update_last_active(self, user_id: int):
+    async def update_last_active(self, user_id: int):
         """Update the last active timestamp for a user."""
         try:
-            self.users.update_one(
+            result = await self.users.update_one(
                 {"user_id": user_id},
                 {"$set": {"last_active": datetime.utcnow()}},
             )
-            logger.info(f"Updated last_active timestamp for user {user_id}.")
+            if result.modified_count > 0:
+                logger.info(f"Updated last_active timestamp for user {user_id}.")
+            else:
+                logger.warning(f"User {user_id} not found for updating last_active.")
         except Exception as e:
             logger.error(f"Error updating last_active for user {user_id}: {e}")
 
-    def delete_user(self, user_id: int):
+    async def delete_user(self, user_id: int):
         """Delete a user from the database."""
         try:
-            result = self.users.delete_one({"user_id": user_id})
+            result = await self.users.delete_one({"user_id": user_id})
             if result.deleted_count > 0:
                 logger.info(f"User {user_id} deleted from the database.")
             else:
