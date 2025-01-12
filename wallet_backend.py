@@ -54,18 +54,6 @@ class WalletBackend:
             }
         logger.error(f"Failed to create wallet: {result.get('error', 'Unknown error')}")
         return {"success": False, "error": result.get("error", "Unknown error")}
-            # Return wallet details
-            logger.info(f"Wallet successfully created: {wallet_data}")
-            return {
-                "success": True,
-                "mnemonic": wallet_data["mnemonic"],
-                "receiving_address": wallet_data["receivingAddress"],
-                "change_address": wallet_data["changeAddress"],
-                "private_key": wallet_data["xPrv"],
-            }
-
-        logger.error(f"Failed to create wallet: {wallet_data.get('error', 'Unknown error')}")
-        return {"success": False, "error": wallet_data.get("error", "Unknown error")}
 
     async def get_balance(self, address):
         """Get the balance of a specific address."""
