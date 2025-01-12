@@ -21,6 +21,19 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
+// Retrieve environment variables
+const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.API_KEY;
+
+// Middleware to validate API key
+app.use((req, res, next) => {
+    const clientApiKey = req.headers["x-api-key"];
+    if (!clientApiKey || clientApiKey !== API_KEY) {
+        return res.status(403).json({ success: false, error: "Forbidden: Invalid API Key" });
+    }
+    next();
+});
+
 // Initialize RPC client
 const rpc = new RpcClient({
     resolver: new Resolver(),
@@ -95,5 +108,4 @@ app.post("/execute", async (req, res) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Node.js WASM server running on port ${PORT}`));
