@@ -8,12 +8,15 @@ from io import BytesIO
 
 import httpx
 from pydub import AudioSegment
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    ContextTypes,
     filters
 )
+
 from db_manager import DBManager
 from wallet_backend import WalletBackend
 
@@ -150,7 +153,7 @@ async def generate_openai_response(user_text: str) -> str:
     }
     persona = get_kasper_persona()
     payload = {
-        "model": "gpt-4",  # Corrected model name
+        "model": "gpt-4",  # Ensure you have access to GPT-4
         "messages": [
             {"role": "system", "content": persona},
             {"role": "user", "content": user_text}
@@ -180,7 +183,7 @@ async def generate_openai_response(user_text: str) -> str:
             return "❌ Boo! An error occurred while channeling Kasper's ghostly response. Try again, spirit friend!"
 
 # /start Command Handler
-async def start_command(update, context):
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command."""
     user_id = update.effective_user.id
     logger.info(f"Received /start command from user {user_id}")
@@ -220,7 +223,7 @@ async def start_command(update, context):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
-async def balance_command(update, context):
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /balance command."""
     user_id = update.effective_user.id
     logger.info(f"Received /balance command from user {user_id}")
@@ -237,7 +240,7 @@ async def balance_command(update, context):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /topup Command Handler
-async def topup_command(update, context):
+async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /topup command."""
     user_id = update.effective_user.id
     logger.info(f"Received /topup command from user {user_id}")
@@ -355,104 +358,104 @@ async def topup_command(update, context):
         context.chat_data["scan_task"] = asyncio.create_task(scan_with_real_time_processing())
         logger.info(f"Started new scan task for user {user_id}.")
 
-    # /endtopup Command Handler
-    async def endtopup_command(update, context):
-        """Handles the /endtopup command."""
-        user_id = update.effective_user.id
-        logger.info(f"Received /endtopup command from user {user_id}")
-        try:
-            user = await db.get_user(user_id)
-            if not user:
-                await update.message.reply_text("❌ You need to /start first to create a wallet.")
-                return
+# /endtopup Command Handler
+async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /endtopup command."""
+    user_id = update.effective_user.id
+    logger.info(f"Received /endtopup command from user {user_id}")
+    try:
+        user = await db.get_user(user_id)
+        if not user:
+            await update.message.reply_text("❌ You need to /start first to create a wallet.")
+            return
 
-            wallet_address = user.get("wallet")
-            if not wallet_address:
-                await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
-                return
+        wallet_address = user.get("wallet")
+        if not wallet_address:
+            await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
+            return
 
-            # Cancel any active scan
-            if "scan_task" in context.chat_data:
-                scan_task = context.chat_data["scan_task"]
-                if not scan_task.done():
-                    scan_task.cancel()
-                    try:
-                        await scan_task
-                    except asyncio.CancelledError:
-                        logger.info(f"Scan task successfully cancelled for user {user_id}.")
-                del context.chat_data["scan_task"]
+        # Cancel any active scan
+        if "scan_task" in context.chat_data:
+            scan_task = context.chat_data["scan_task"]
+            if not scan_task.done():
+                scan_task.cancel()
+                try:
+                    await scan_task
+                except asyncio.CancelledError:
+                    logger.info(f"Scan task successfully cancelled for user {user_id}.")
+            del context.chat_data["scan_task"]
 
-            # Fetch transaction data
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{KRC20_API_BASE_URL}/oplist",
-                    params={"address": wallet_address, "tick": "KASPER"}
-                )
-                response.raise_for_status()
-                data = response.json()
-                logger.info(f"API Response for oplist: {data}")
+        # Fetch transaction data
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{KRC20_API_BASE_URL}/oplist",
+                params={"address": wallet_address, "tick": "KASPER"}
+            )
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"API Response for oplist: {data}")
 
-            # Calculate credits from new transactions
-            total_credits = 0
-            processed_hashes = await db.get_processed_hashes(user_id)
-            for tx in data.get("result", []):
-                logger.info(f"Processing transaction: {tx}")
+        # Calculate credits from new transactions
+        total_credits = 0
+        processed_hashes = await db.get_processed_hashes(user_id)
+        for tx in data.get("result", []):
+            logger.info(f"Processing transaction: {tx}")
 
-                hash_rev = tx.get("hashRev")
-                if hash_rev and hash_rev not in processed_hashes:
-                    kasper_amount = int(tx.get("amt", 0))
-                    credits = kasper_amount // CREDIT_CONVERSION_RATE
-                    total_credits += credits
+            hash_rev = tx.get("hashRev")
+            if hash_rev and hash_rev not in processed_hashes:
+                kasper_amount = int(tx.get("amt", 0))
+                credits = kasper_amount // CREDIT_CONVERSION_RATE
+                total_credits += credits
 
-                    # Save processed hash
-                    await db.add_processed_hash(user_id, hash_rev)
+                # Save processed hash
+                await db.add_processed_hash(user_id, hash_rev)
 
-            if total_credits > 0:
-                # Update user's credits
-                new_credits = user.get("credits", 0) + total_credits
-                await db.update_user_credits(user_id, new_credits)
-                await update.message.reply_text(
-                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                    "👻 Use /balance to see your updated credits!",
-                    parse_mode="Markdown"
-                )
-                logger.info(f"User {user_id} credits updated by {total_credits} credits.")
-            else:
-                await update.message.reply_text("❌ No new KASPER deposits found.")
-                logger.info(f"No new deposits found for user {user_id}.")
-
-        except Exception as e:
-            logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
-            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-
-    # /text Command Handler for AI
-    async def handle_text_message(update, context):
-        """Handles text messages for AI responses."""
-        user_id = update.effective_user.id
-        user_text = update.message.text.strip()
-        logger.info(f"Received text message from user {user_id}: {user_text}")
-        try:
-            user = await db.get_user(user_id)
-            if not user or user.get("credits", 0) <= 0:
-                await update.message.reply_text("❌ You have no credits remaining.")
-                return
-
-            await update.message.reply_text("👻 Kasper is recording a message...")
-            ai_response = await generate_openai_response(user_text)
-            mp3_audio = await elevenlabs_tts(ai_response)
-            ogg_audio = convert_mp3_to_ogg(mp3_audio)
-
-            # Deduct one credit
-            new_credits = user.get("credits", 0) - 1
+        if total_credits > 0:
+            # Update user's credits
+            new_credits = user.get("credits", 0) + total_credits
             await db.update_user_credits(user_id, new_credits)
-            logger.info(f"Deducted 1 credit for user {user_id}. New balance: {new_credits}")
+            await update.message.reply_text(
+                f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                "👻 Use /balance to see your updated credits!",
+                parse_mode="Markdown"
+            )
+            logger.info(f"User {user_id} credits updated by {total_credits} credits.")
+        else:
+            await update.message.reply_text("❌ No new KASPER deposits found.")
+            logger.info(f"No new deposits found for user {user_id}.")
 
-            await update.message.reply_text(ai_response)
-            await update.message.reply_voice(voice=ogg_audio)
-            logger.info(f"Sent AI response and voice to user {user_id}.")
-        except Exception as e:
-            logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
-            await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
+    except Exception as e:
+        logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
+# /text Command Handler for AI
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles text messages for AI responses."""
+    user_id = update.effective_user.id
+    user_text = update.message.text.strip()
+    logger.info(f"Received text message from user {user_id}: {user_text}")
+    try:
+        user = await db.get_user(user_id)
+        if not user or user.get("credits", 0) <= 0:
+            await update.message.reply_text("❌ You have no credits remaining.")
+            return
+
+        await update.message.reply_text("👻 Kasper is recording a message...")
+        ai_response = await generate_openai_response(user_text)
+        mp3_audio = await elevenlabs_tts(ai_response)
+        ogg_audio = convert_mp3_to_ogg(mp3_audio)
+
+        # Deduct one credit
+        new_credits = user.get("credits", 0) - 1
+        await db.update_user_credits(user_id, new_credits)
+        logger.info(f"Deducted 1 credit for user {user_id}. New balance: {new_credits}")
+
+        await update.message.reply_text(ai_response)
+        await update.message.reply_voice(voice=ogg_audio)
+        logger.info(f"Sent AI response and voice to user {user_id}.")
+    except Exception as e:
+        logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
+        await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
 # Main asynchronous function
 async def main_async():
