@@ -1,3 +1,4 @@
+# main.py
 import os
 import logging
 import asyncio
@@ -13,8 +14,8 @@ from telegram.ext import (
     MessageHandler,
     filters
 )
-from db_manager import DBManager  # Ensure async methods are implemented
-from wallet_backend import WalletBackend  # Ensure async methods are implemented
+from db_manager import DBManager
+from wallet_backend import WalletBackend  # Ensure this is asynchronous or handled properly
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -96,7 +97,7 @@ def get_kasper_persona():
     )
 
 # Convert MP3 to OGG
-def convert_mp3_to_ogg(mp3_data: bytes) -> BytesIO:
+def convert_mp3_to_ogg(mp3_data: bytes) -> Optional[BytesIO]:
     try:
         mp3_file = BytesIO(mp3_data)
         segment = AudioSegment.from_file(mp3_file, format="mp3")
@@ -112,7 +113,7 @@ def convert_mp3_to_ogg(mp3_data: bytes) -> BytesIO:
         return ogg_buffer
     except Exception as e:
         logger.error(f"Audio conversion error: {e}", exc_info=True)
-        return BytesIO(b"")
+        return None  # Return None to indicate failure
 
 # ElevenLabs TTS
 async def elevenlabs_tts(text: str) -> bytes:
@@ -122,7 +123,7 @@ async def elevenlabs_tts(text: str) -> bytes:
     }
     payload = {
         "text": text,
-        "model_id": "eleven_turbo_v2",
+        "model_id": "eleven_turbo_v2",  # Verify if this is correct
         "voice_settings": {
             "stability": 0.75,
             "similarity_boost": 0.75
@@ -149,7 +150,7 @@ async def generate_openai_response(user_text: str) -> str:
     }
     persona = get_kasper_persona()
     payload = {
-        "model": "gpt-4o-mini",  # Corrected model name
+        "model": "gpt-4",  # Corrected model name
         "messages": [
             {"role": "system", "content": persona},
             {"role": "user", "content": user_text}
@@ -185,10 +186,10 @@ async def start_command(update, context):
     chat_id = update.effective_chat.id
     logger.info(f"Processing /start command for user_id: {user_id}")
     try:
-        user = await get_user_async(user_id)
+        user = await db.get_user(user_id)
         if not user:
             logger.info(f"User {user_id} not found. Initiating wallet creation...")
-            wallet_data = await create_wallet_async()
+            wallet_data = await create_wallet_async()  # Ensure this function is defined and async
 
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receiving_address")
@@ -198,7 +199,7 @@ async def start_command(update, context):
                 if not all([wallet_address, private_key, mnemonic]):
                     raise ValueError("Incomplete wallet data received from wallet_backend")
 
-                await add_user_async(
+                await db.add_user(
                     user_id,
                     credits=3,
                     wallet=wallet_address,
@@ -253,7 +254,7 @@ async def start_command(update, context):
 async def balance_command(update, context):
     user_id = update.effective_user.id
     try:
-        user = await get_user_async(user_id)
+        user = await db.get_user(user_id)
         if not user:
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
@@ -268,7 +269,7 @@ async def balance_command(update, context):
 async def topup_command(update, context):
     user_id = update.effective_user.id
     try:
-        user = await get_user_async(user_id)
+        user = await db.get_user(user_id)
         if not user:
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
@@ -290,6 +291,10 @@ async def topup_command(update, context):
             old_task = context.chat_data["scan_task"]
             if not old_task.done():
                 old_task.cancel()
+                try:
+                    await old_task
+                except asyncio.CancelledError:
+                    logger.info("Old scan task canceled.")
 
         # Start a new scan with real-time deposit processing
         async def scan_with_real_time_processing():
@@ -317,17 +322,24 @@ async def topup_command(update, context):
                             logger.error(f"Error updating countdown: {edit_error}", exc_info=True)
 
                         # Fetch transaction data
-                        response = await client.get(
-                            f"{KRC20_API_BASE_URL}/oplist",
-                            params={"address": wallet_address, "tick": "KASPER"}
-                        )
-                        response.raise_for_status()
-                        data = response.json()
-
-                        logger.debug(f"API Response for oplist: {data}")
+                        try:
+                            response = await client.get(
+                                f"{KRC20_API_BASE_URL}/oplist",
+                                params={"address": wallet_address, "tick": "KASPER"}
+                            )
+                            response.raise_for_status()
+                            data = response.json()
+                            logger.debug(f"API Response for oplist: {data}")
+                        except Exception as api_error:
+                            logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
+                            await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text="❌ Error fetching transaction data. Please try again later."
+                            )
+                            break  # Exit the scan loop on API failure
 
                         # Process new transactions
-                        processed_hashes = await get_processed_hashes_async(user_id)
+                        processed_hashes = await db.get_processed_hashes(user_id)
                         for tx in data.get("result", []):
                             logger.debug(f"Processing transaction: {tx}")
 
@@ -336,21 +348,20 @@ async def topup_command(update, context):
                                 kasper_amount = int(tx.get("amt", 0))
                                 credits = kasper_amount // CREDIT_CONVERSION_RATE
 
-                                # Save processed hash
-                                await add_processed_hash_async(user_id, hash_rev)
+                                if credits > 0:
+                                    # Save processed hash and update credits atomically
+                                    await db.add_processed_hash(user_id, hash_rev)
+                                    new_credits = user.get("credits", 0) + credits
+                                    await db.update_user_credits(user_id, new_credits)
 
-                                # Update user's credits
-                                new_credits = user.get("credits", 0) + credits
-                                await update_user_credits_async(user_id, new_credits)
-
-                                # Notify user of successful deposit
-                                await context.bot.send_message(
-                                    chat_id=update.effective_chat.id,
-                                    text=(f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
-                                          f"to your account! Your spectral wallet is growing! 🎉\n\n"
-                                          "👻 Use /balance to see your updated credits!"),
-                                    parse_mode="Markdown"
-                                )
+                                    # Notify user of successful deposit
+                                    await context.bot.send_message(
+                                        chat_id=update.effective_chat.id,
+                                        text=(f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
+                                              f"to your account! Your spectral wallet is growing! 🎉\n\n"
+                                              "👻 Use /balance to see your updated credits!"),
+                                        parse_mode="Markdown"
+                                    )
 
                         await asyncio.sleep(5)  # Update every 5 seconds
 
@@ -382,7 +393,7 @@ async def topup_command(update, context):
 async def endtopup_command(update, context):
     user_id = update.effective_user.id
     try:
-        user = await get_user_async(user_id)
+        user = await db.get_user(user_id)
         if not user:
             await update.message.reply_text("❌ You need to /start first to create a wallet.")
             return
@@ -405,18 +416,25 @@ async def endtopup_command(update, context):
 
         # Fetch transaction data for the wallet address
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{KRC20_API_BASE_URL}/oplist",
-                params={"address": wallet_address, "tick": "KASPER"}
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            logger.debug(f"API Response for oplist: {data}")
+            try:
+                response = await client.get(
+                    f"{KRC20_API_BASE_URL}/oplist",
+                    params={"address": wallet_address, "tick": "KASPER"}
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.debug(f"API Response for oplist: {data}")
+            except Exception as api_error:
+                logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Error fetching transaction data. Please try again later."
+                )
+                return
 
             # Calculate credits from new transactions
             total_credits = 0
-            processed_hashes = await get_processed_hashes_async(user_id)
+            processed_hashes = await db.get_processed_hashes(user_id)
             for tx in data.get("result", []):
                 logger.debug(f"Processing transaction: {tx}")
 
@@ -424,14 +442,15 @@ async def endtopup_command(update, context):
                 if hash_rev and hash_rev not in processed_hashes:
                     kasper_amount = int(tx.get("amt", 0))
                     credits = kasper_amount // CREDIT_CONVERSION_RATE
-                    total_credits += credits
+                    if credits > 0:
+                        total_credits += credits
 
-                    # Save processed hash
-                    await add_processed_hash_async(user_id, hash_rev)
+                        # Save processed hash and update credits atomically
+                        await db.add_processed_hash(user_id, hash_rev)
+                        new_credits = user.get("credits", 0) + credits
+                        await db.update_user_credits(user_id, new_credits)
 
             if total_credits > 0:
-                new_credits = user.get("credits", 0) + total_credits
-                await update_user_credits_async(user_id, new_credits)
                 await update.message.reply_text(
                     f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
                     "👻 Use /balance to see your updated credits!",
@@ -448,7 +467,7 @@ async def handle_text_message(update, context):
     user_id = update.effective_user.id
     user_text = update.message.text.strip()
     try:
-        user = await get_user_async(user_id)
+        user = await db.get_user(user_id)
         if not user or user.get("credits", 0) <= 0:
             await update.message.reply_text("❌ You have no credits remaining.")
             return
@@ -458,11 +477,11 @@ async def handle_text_message(update, context):
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
 
-        if ogg_audio.getbuffer().nbytes == 0:
+        if ogg_audio is None or ogg_audio.getbuffer().nbytes == 0:
             await update.message.reply_text("❌ Failed to generate audio response.")
             return
 
-        await update_user_credits_async(user_id, user.get("credits", 0) - 1)
+        await db.update_user_credits(user_id, user.get("credits", 0) - 1)
 
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
