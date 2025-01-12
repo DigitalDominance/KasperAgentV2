@@ -1,9 +1,7 @@
-# main.py
 import os
 import asyncio
+import os
 import logging
-from datetime import datetime, timedelta
-from collections import defaultdict
 from io import BytesIO
 
 import httpx
@@ -15,7 +13,6 @@ from telegram.ext import (
     MessageHandler,
     ContextTypes,
     filters,
-    CallbackContext,
 )
 
 from db_manager import DBManager
@@ -23,9 +20,9 @@ from wallet_backend import WalletBackend
 from rate_limit import rate_limit  # Ensure rate_limit.py exists in the same directory
 
 # Environment variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
 KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
@@ -40,18 +37,13 @@ logger = logging.getLogger(__name__)
 # Initialize dependencies
 db = DBManager()
 wallet_backend = WalletBackend()
-USER_MESSAGE_LIMITS = defaultdict(lambda: {
-    "count": 0,
-    "reset_time": datetime.utcnow() + timedelta(hours=24),
-    "last_message_time": None
-})
 market_data_cache = {
     "price": "N/A",
     "market_cap": "N/A",
     "daily_volume": "N/A"
 }
 
-async def fetch_kasper_market_data(context: CallbackContext):
+async def fetch_kasper_market_data(context: ContextTypes.DEFAULT_TYPE):
     """Fetches Kasper market data and updates the cache."""
     global market_data_cache
     url = "https://api.coingecko.com/api/v3/simple/price"
@@ -282,7 +274,7 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in topup_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
-async def endtopup_job(context: CallbackContext):
+async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
     """Automatically ends the top-up process after a specified time."""
     job = context.job
     user_id = job.data["user_id"]
@@ -447,25 +439,25 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Main asynchronous function
 async def main_async():
     """Main asynchronous function to set up the bot."""
-    # Initialize the database
-    await db.init_db()
-
-    # Initialize Telegram bot application
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
-    # Register command handlers
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("balance", balance_command))
-    application.add_handler(CommandHandler("topup", topup_command))
-    application.add_handler(CommandHandler("endtopup", endtopup_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-
-    # Schedule periodic market data updates using JobQueue
-    application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
-
-    logger.info("🚀 Starting Kasper AI Bot...")
     try:
-        await application.run_polling()
+        # Initialize the database
+        await db.init_db()
+
+        # Initialize Telegram bot application
+        async with ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build() as application:
+            # Register command handlers
+            application.add_handler(CommandHandler("start", start_command))
+            application.add_handler(CommandHandler("balance", balance_command))
+            application.add_handler(CommandHandler("topup", topup_command))
+            application.add_handler(CommandHandler("endtopup", endtopup_command))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+
+            # Schedule periodic market data updates using JobQueue
+            application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
+
+            logger.info("🚀 Starting Kasper AI Bot...")
+            await application.run_polling()
+
     finally:
         logger.info("Shutting down...")
         # Close the database connection
@@ -476,6 +468,7 @@ async def main_async():
 def main():
     """Entry point of the application."""
     try:
+        import asyncio
         asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user.")
