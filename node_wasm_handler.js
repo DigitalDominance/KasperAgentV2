@@ -23,7 +23,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Retrieve environment variables
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 const API_KEY = process.env.API_KEY;
 
 // Middleware to validate API key
