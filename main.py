@@ -13,8 +13,8 @@ from telegram.ext import (
     MessageHandler,
     filters
 )
-from db_manager import DBManager  # Ensure this is the updated async version
-from wallet_backend import WalletBackend  # Ensure this is compatible with async
+from db_manager import DBManager
+from wallet_backend import WalletBackend  # Ensure this is the updated async version
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -188,7 +188,7 @@ async def start_command(update, context):
         user = await db.get_user(user_id)
         if not user:
             logger.info(f"User {user_id} not found. Initiating wallet creation...")
-            wallet_data = await create_wallet_async()  # Ensure this function is defined and async
+            wallet_data = await wallet_backend.create_wallet()  # Await the async method
 
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receiving_address")
@@ -493,6 +493,9 @@ async def main_async():
     application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
+
+    # Initialize the database
+    await db.init_db()
 
     # Start the market data updater as a background task
     asyncio.create_task(update_market_data())
