@@ -24,19 +24,38 @@ class User(BaseModel):
 
 class DBManager:
     def __init__(self):
-        # MongoDB URI and Connection Pool Configuration
-        mongodb_uri = os.getenv("MONGODB_URI")
-        self.client = MongoClient(
-            mongodb_uri,
-            maxPoolSize=100,  # Maximum connections in the pool
-            minPoolSize=5,    # Minimum connections to maintain in the pool
-            connectTimeoutMS=10000,  # Timeout for establishing a new connection
-            maxIdleTimeMS=300000,    # Maximum idle time for a connection in the pool
-            waitQueueTimeoutMS=5000  # Time to wait for an available connection
-        )
-        self.db = self.client.get_database("your_database_name")  # Replace with your database name
-        logging.info("MongoDB connection pool initialized.")
+        try:
+            # Retrieve MongoDB URI from environment variables
+            mongo_uri = os.getenv("MONGODB_URI")
+            if not mongo_uri:
+                raise ValueError("MONGODB_URI is not set in the environment variables.")
+            
+            logging.info(f"Connecting to MongoDB at: {mongo_uri}")
+            
+            # Initialize MongoClient with connection pool configurations
+            self.client = MongoClient(
+                mongo_uri,
+                serverSelectionTimeoutMS=5000,
+                maxPoolSize=100,  # Adjust pool size based on your needs
+                minPoolSize=5,
+                connectTimeoutMS=10000,
+                maxIdleTimeMS=300000
+            )
+            
+            # Reference the database and the "users" collection
+            self.db = self.client["kasperdb"]
+            self.users = self.db["users"]
 
+            # Ensure user_id is unique in the collection
+            self.users.create_index("user_id", unique=True)
+            
+            logging.info("MongoDB connection pool initialized.")
+        except errors.ServerSelectionTimeoutError as e:
+            logging.error(f"Error connecting to MongoDB: {e}")
+            raise
+        except Exception as e:
+            logging.error(f"Unexpected error occurred: {e}")
+            raise
     def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
         try:
