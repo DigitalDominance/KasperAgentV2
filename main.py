@@ -265,8 +265,12 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
         )
 
-        # Schedule the end of the top-up process after 5 minutes
-        context.job_queue.run_once(endtopup_job, when=300, data={"user_id": user_id, "receiving_address": receiving_address})
+        # Schedule the end of the top-up process after 5 minutes using JobQueue
+        context.job_queue.run_once(
+            endtopup_job,
+            when=300,  # 5 minutes in seconds
+            data={"user_id": user_id, "receiving_address": receiving_address}
+        )
 
         logger.info(f"Initiated top-up process for user {user_id}.")
 
