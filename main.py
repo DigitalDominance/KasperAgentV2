@@ -3,6 +3,12 @@ import asyncio
 import os
 import sys
 import logging
+from io import BytesIO
+import httpx
+from pydub import AudioSegment
+from telegram.ext import JobQueue
+from functools import wraps
+
 import nest_asyncio  # Import nest_asyncio
 from telegram import Update
 from telegram.ext import (
