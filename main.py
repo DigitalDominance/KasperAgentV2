@@ -138,6 +138,7 @@ async def start_command(update, context):
 
 # /topup Command Handler
 # /topup Command Handler
+# /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
@@ -151,54 +152,80 @@ async def topup_command(update, context):
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    countdown_time = 5 * 60  # 5 minutes in seconds
-    countdown_message = await update.message.reply_text(
-        f"👻 *The realm of credits awaits!* Each credit costs {CREDIT_CONVERSION_RATE // (10 ** 8)} KASPER.\n\n"
-        f"📩 Deposit KASPER to this address: `{wallet_address}`\n\n"
-        f"⏳ Time remaining: 5:00\n\n"
-        "✅ Finalize the process with /endtopup once your deposit is complete."
+    rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
+    message = await update.message.reply_text(
+        f"👻 Spook-tacular Top-Up!\n\n"
+        f"🔑 Deposit Address: `{wallet_address}`\n"
+        f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+        f"⏳ Remaining Time: 5:00\n\n"
+        "✅ After depositing, finalize the process by using the `/endtopup` command."
     )
 
-    context.chat_data["scan_active"] = True
-    context.chat_data["scan_timer"] = datetime.utcnow() + timedelta(seconds=countdown_time)
+    # Cancel any previous scan
+    if "scan_task" in context.chat_data:
+        old_task = context.chat_data["scan_task"]
+        if not old_task.done():
+            old_task.cancel()
 
-    async with httpx.AsyncClient() as client:
-        while context.chat_data.get("scan_active", False) and countdown_time > 0:
-            try:
-                # Update the countdown timer in the message
-                minutes, seconds = divmod(countdown_time, 60)
-                await countdown_message.edit_text(
-                    f"👻 *The realm of credits awaits!* Each credit costs {CREDIT_CONVERSION_RATE // (10 ** 8)} KASPER.\n\n"
-                    f"📩 Deposit KASPER to this address: `{wallet_address}`\n\n"
-                    f"⏳ Time remaining: {minutes:02}:{seconds:02}\n\n"
-                    "✅ Finalize the process with /endtopup once your deposit is complete."
+    # Start a new scan with countdown
+    async def scan_deposits_with_countdown():
+        try:
+            async with httpx.AsyncClient() as client:
+                end_time = datetime.utcnow() + timedelta(minutes=5)
+                while datetime.utcnow() < end_time:
+                    remaining_time = end_time - datetime.utcnow()
+                    minutes, seconds = divmod(remaining_time.total_seconds(), 60)
+                    countdown_text = f"⏳ Remaining Time: {int(minutes)}:{int(seconds):02d}"
+                    
+                    try:
+                        # Edit the message to update the countdown
+                        await context.bot.edit_message_text(
+                            chat_id=update.effective_chat.id,
+                            message_id=message.message_id,
+                            text=(
+                                f"👻 Spook-tacular Top-Up!\n\n"
+                                f"🔑 Deposit Address: `{wallet_address}`\n"
+                                f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+                                f"{countdown_text}\n\n"
+                                "✅ After depositing, finalize the process by using the `/endtopup` command."
+                            ),
+                            parse_mode="Markdown",
+                        )
+                    except Exception as edit_error:
+                        logger.error(f"Error updating countdown message: {edit_error}")
+
+                    # Check transactions during the scan
+                    params = {"address": wallet_address, "tick": "KASPER"}
+                    response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    for tx in data.get("result", []):
+                        logger.info(f"KASPER transaction detected during scan: {tx}")
+
+                    await asyncio.sleep(5)  # Update every 5 seconds
+
+                # Timeout behavior
+                await context.bot.edit_message_text(
+                    chat_id=update.effective_chat.id,
+                    message_id=message.message_id,
+                    text=(
+                        f"👻 *Spook-tacular Top-Up!*\n\n"
+                        f"🔑 Deposit Address: `{wallet_address}`\n"
+                        f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+                        "⏳ The top-up scan has timed out. Please use `/topup` to restart."
+                    ),
+                    parse_mode="Markdown",
                 )
-                countdown_time -= 5
+        except asyncio.CancelledError:
+            logger.info("Scan task was canceled.")
+        except Exception as e:
+            logger.error(f"Error during top-up scan: {e}")
 
-                # Perform the KRC20 scan
-                params = {"address": wallet_address, "tick": "KASPER"}
-                response = await client.get(f"{KRC20_API_BASE_URL}/oplist", params=params)
-                response.raise_for_status()
-                data = response.json()
-
-                for tx in data.get("result", []):
-                    logger.info(f"KASPER transaction detected during scan: {tx}")
-
-            except Exception as e:
-                logger.error(f"Error during top-up scan: {e}")
-
-            await asyncio.sleep(10)
-
-        context.chat_data["scan_active"] = False
-
-        if countdown_time <= 0:
-            await countdown_message.edit_text(
-                "⏳ *The top-up process has timed out.* Please use `/topup` to restart."
-            )
+    context.chat_data["scan_task"] = asyncio.create_task(scan_deposits_with_countdown())
 
 
 
-# /endtopup Command Handler
 # /endtopup Command Handler
 async def endtopup_command(update, context):
     user_id = update.effective_user.id
@@ -213,17 +240,18 @@ async def endtopup_command(update, context):
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    # Safely stop any ongoing scan
-    if context.chat_data.get("scan_active"):
-        context.chat_data["scan_active"] = False
-        await update.message.reply_text("⏳ *Scan halted by the ghostly powers!* Processing your deposits...")
+    # Cancel any active scan
+    if "scan_task" in context.chat_data:
+        scan_task = context.chat_data["scan_task"]
+        if not scan_task.done():
+            scan_task.cancel()
+            await update.message.reply_text("⏳ Stopping the top-up scan...")
 
+    # Process deposits
     try:
         async with httpx.AsyncClient() as client:
-            # Retrieve transactions for the user's wallet
             response = await client.get(
-                f"{KRC20_API_BASE_URL}/oplist",
-                params={"address": wallet_address, "tick": "KASPER"}
+                f"{KRC20_API_BASE_URL}/oplist", params={"address": wallet_address, "tick": "KASPER"}
             )
             response.raise_for_status()
             data = response.json()
@@ -253,17 +281,6 @@ async def endtopup_command(update, context):
     except Exception as e:
         logger.error(f"Error in endtopup_command: {e}")
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
-
-# /balance Command Handler
-async def balance_command(update, context):
-    user_id = update.effective_user.id
-    user = db.get_user(user_id)
-
-    if not user:
-        await update.message.reply_text("❌ You need to /start first to create a wallet.")
-        return
-
-    await update.message.reply_text(f"👻 You have {user.get('credits', 0)} credits remaining.")
 
 
 # Main function
