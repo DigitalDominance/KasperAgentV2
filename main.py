@@ -454,9 +454,11 @@ async def endtopup_command(update, context):
                 )
             else:
                 await update.message.reply_text("✅ No remaining deposits found.")
+
     except Exception as e:
         logger.error(f"Error in /endtopup command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+
 
 # /text Command Handler for AI
 async def handle_text_message(update, context):
