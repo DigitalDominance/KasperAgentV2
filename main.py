@@ -1,5 +1,7 @@
 # main.py
 import asyncio
+import os
+import sys
 import logging
 import nest_asyncio  # Import nest_asyncio
 from telegram import Update
