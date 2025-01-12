@@ -241,14 +241,15 @@ async def topup_command(update, context):
     wallet_address = user.get("wallet")
     rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
-    message = await update.message.reply_text(
-        f"👻 *Spook-tacular Top-Up!*\n\n"
-        f"🔑 Deposit Address: `{wallet_address}`\n"
-        f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-        f"⏳ Remaining Time: 5:00\n\n"
-        "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00.",
-        parse_mode="Markdown",
-    )
+   message = await update.message.reply_text(
+    f"👻 *Spook-tacular Top-Up!*\n\n"
+    f"🔑 **Deposit Address:** `{wallet_address}`\n"
+    f"💸 **Current Rate:** 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+    f"⏳ **Remaining Time:** 5:00\n\n"
+    "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
+    "💡 *(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ If your deposit is not recognized within 5:00, you can restart by using* `/topup` *again.*",
+    parse_mode="Markdown"
+)
 
     # Cancel any previous scan
     if "scan_task" in context.chat_data:
@@ -275,7 +276,8 @@ async def topup_command(update, context):
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-                                  "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00."),
+                                  "✅ *If your deposit is recognized, end the process by using the* `/endtopup` *command.*\n\n"
+   				  "💡 *(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ If your deposit is not recognized within 5:00, you can restart by using* `/topup` *again.*",
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
