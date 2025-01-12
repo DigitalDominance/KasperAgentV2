@@ -1,4 +1,3 @@
-# main.py
 import asyncio
 import os
 import sys
@@ -33,6 +32,8 @@ ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
 KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
+NODE_API_BASE_URL = os.getenv("NODE_API_BASE_URL")  # Get Node.js API base URL from environment
+API_KEY = os.getenv("API_KEY")  # Get Node.js API key from environment
 
 # Logging setup
 logging.basicConfig(
@@ -43,12 +44,13 @@ logger = logging.getLogger(__name__)
 
 # Initialize dependencies
 db = DBManager()
-wallet_backend = WalletBackend()
+wallet_backend = WalletBackend(NODE_API_BASE_URL, API_KEY)  # Pass API base URL and key
 market_data_cache = {
     "price": "N/A",
     "market_cap": "N/A",
     "daily_volume": "N/A"
 }
+
 
 async def fetch_kasper_market_data(context: ContextTypes.DEFAULT_TYPE):
     """Fetches Kasper market data and updates the cache."""
@@ -78,6 +80,7 @@ async def fetch_kasper_market_data(context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Error fetching Kasper market data: {e}", exc_info=True)
             market_data_cache = {"price": "N/A", "market_cap": "N/A", "daily_volume": "N/A"}
 
+
 def get_kasper_persona():
     return (
         "Do not say asterisk ( * ) or any punctuation of the sort. don't use it either. "
@@ -95,6 +98,7 @@ def get_kasper_persona():
         "Don't mention XT as an exchange; they got hacked. "
         # Additional content...
     )
+
 
 # Convert MP3 to OGG
 def convert_mp3_to_ogg(mp3_data: bytes) -> BytesIO:
@@ -114,6 +118,7 @@ def convert_mp3_to_ogg(mp3_data: bytes) -> BytesIO:
     except Exception as e:
         logger.error(f"Audio conversion error: {e}", exc_info=True)
         return BytesIO()
+
 
 # ElevenLabs TTS
 async def elevenlabs_tts(text: str) -> bytes:
@@ -141,6 +146,7 @@ async def elevenlabs_tts(text: str) -> bytes:
         except Exception as e:
             logger.error(f"Error in ElevenLabs TTS: {e}", exc_info=True)
             return b""
+
 
 # OpenAI Chat Completion
 async def generate_openai_response(user_text: str) -> str:
@@ -179,7 +185,7 @@ async def generate_openai_response(user_text: str) -> str:
             logger.error(f"Error in OpenAI Chat Completion: {e}", exc_info=True)
             return "❌ Boo! An error occurred while channeling Kasper's ghostly response. Try again, spirit friend!"
 
-# /start Command Handler
+
 # /start Command Handler
 @rate_limit(5)  # Limit to 5 invocations per minute
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,6 +234,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in start_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
+
 # /balance Command Handler
 @rate_limit(10)  # Allows 10 invocations per minute
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -245,6 +252,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in balance_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 # /topup Command Handler
 @rate_limit(5)  # Allows 5 invocations per minute
@@ -287,6 +295,7 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in topup_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
     """Automatically ends the top-up process after a specified time."""
@@ -355,72 +364,6 @@ async def endtopup_job(context: ContextTypes.DEFAULT_TYPE):
             chat_id=user_id,
             text="❌ An unexpected error occurred during the top-up process. Please try again later."
         )
-
-# /endtopup Command Handler
-@rate_limit(5)  # Allows 5 invocations per minute
-async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the /endtopup command."""
-    user_id = update.effective_user.id
-    logger.info(f"Received /endtopup command from user {user_id}")
-    try:
-        user = await db.get_user(user_id)
-        if not user:
-            await update.message.reply_text("❌ You need to /start first to create a wallet.")
-            return
-
-        receiving_address = user.get("receiving_address")
-        if not receiving_address:
-            await update.message.reply_text("❌ Your receiving address is not set up. Please contact support.")
-            return
-
-        # Fetch transaction data
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{KRC20_API_BASE_URL}/oplist",
-                params={"address": receiving_address, "tick": "KASPER"}
-            )
-            response.raise_for_status()
-            data = response.json()
-            logger.info(f"API Response for oplist: {data}")
-
-        # Calculate credits from new transactions
-        total_credits = 0
-        processed_hashes = await db.get_processed_hashes(user_id)
-        user = await db.get_user(user_id)
-        for tx in data.get("result", []):
-            logger.info(f"Processing transaction: {tx}")
-
-            hash_rev = tx.get("hashRev")
-            if hash_rev and hash_rev not in processed_hashes:
-                kasper_amount = int(tx.get("amt", 0))
-                credits = kasper_amount // CREDIT_CONVERSION_RATE
-                total_credits += credits
-
-                # Save processed hash
-                await db.add_processed_hash(user_id, hash_rev)
-
-        if total_credits > 0:
-            # Update user's credits
-            new_credits = user.get("credits", 0) + total_credits
-            await db.update_user_credits(user_id, new_credits)
-            # Notify user of successful deposit
-            await update.message.reply_text(
-                f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                "👻 Use /balance to see your updated credits!",
-                parse_mode="Markdown"
-            )
-            logger.info(f"User {user_id} credits updated by {total_credits} credits.")
-        else:
-            # Notify user that no new deposits were found
-            await update.message.reply_text(
-                "❌ No new KASPER deposits found.",
-                parse_mode="Markdown"
-            )
-            logger.info(f"No new deposits found for user {user_id}.")
-
-    except Exception as e:
-        logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /text Command Handler for AI
 @rate_limit(20)  # Allows 20 invocations per minute
