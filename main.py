@@ -1,8 +1,8 @@
 # main.py
 import os
 import logging
-import asyncio
 from datetime import datetime, timedelta
+from collections import defaultdict
 from io import BytesIO
 
 import httpx
@@ -19,7 +19,7 @@ from telegram.ext import (
 
 from db_manager import DBManager
 from wallet_backend import WalletBackend
-from rate_limit import rate_limit  # Ensure rate_limit.py exists in the project
+from rate_limit import rate_limit  # Ensure rate_limit.py exists in the same directory
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -39,6 +39,11 @@ logger = logging.getLogger(__name__)
 # Initialize dependencies
 db = DBManager()
 wallet_backend = WalletBackend()
+USER_MESSAGE_LIMITS = defaultdict(lambda: {
+    "count": 0,
+    "reset_time": datetime.utcnow() + timedelta(hours=24),
+    "last_message_time": None
+})
 market_data_cache = {
     "price": "N/A",
     "market_cap": "N/A",
@@ -175,7 +180,7 @@ async def generate_openai_response(user_text: str) -> str:
             return "❌ Boo! An error occurred while channeling Kasper's ghostly response. Try again, spirit friend!"
 
 # /start Command Handler
-@rate_limit(5)  # Allow 5 commands per minute
+@rate_limit(5)  # Allows 5 invocations per minute
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command."""
     user_id = update.effective_user.id
@@ -217,7 +222,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
-@rate_limit(10)  # Allow 10 commands per minute
+@rate_limit(10)  # Allows 10 invocations per minute
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /balance command."""
     user_id = update.effective_user.id
@@ -235,7 +240,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /topup Command Handler
-@rate_limit(5)  # Allow 5 commands per minute
+@rate_limit(5)  # Allows 5 invocations per minute
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /topup command."""
     user_id = update.effective_user.id
@@ -310,11 +315,6 @@ async def endtopup_job(context: CallbackContext):
                 # Save processed hash
                 await db.add_processed_hash(user_id, hash_rev)
 
-        user = await db.get_user(user_id)
-        if user is None:
-            logger.warning(f"User {user_id} not found during top-up processing.")
-            return
-
         if total_credits > 0:
             # Update user's credits
             new_credits = user.get("credits", 0) + total_credits
@@ -349,7 +349,7 @@ async def endtopup_job(context: CallbackContext):
         )
 
 # /endtopup Command Handler
-@rate_limit(5)  # Allow 5 commands per minute
+@rate_limit(5)  # Allows 5 invocations per minute
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /endtopup command."""
     user_id = update.effective_user.id
@@ -414,7 +414,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /text Command Handler for AI
-@rate_limit(20)  # Allow 20 messages per minute
+@rate_limit(20)  # Allows 20 invocations per minute
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles text messages for AI responses."""
     user_id = update.effective_user.id
@@ -443,21 +443,13 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
-# Startup Handler
-async def on_startup(application: ApplicationBuilder):
-    """Handles startup events."""
-    await db.init_db()
-    logger.info("Database initialized.")
-
-# Shutdown Handler
-async def on_shutdown(application: ApplicationBuilder):
-    """Handles shutdown events."""
-    await db.close_connection()
-    logger.info("Database connection closed.")
-
 # Main asynchronous function
 async def main_async():
     """Main asynchronous function to set up the bot."""
+    # Initialize the database
+    await db.init_db()
+
+    # Initialize Telegram bot application
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Register command handlers
@@ -470,12 +462,14 @@ async def main_async():
     # Schedule periodic market data updates using JobQueue
     application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
 
-    # Assign startup and shutdown handlers
-    application.on_startup.append(on_startup)
-    application.on_shutdown.append(on_shutdown)
-
     logger.info("🚀 Starting Kasper AI Bot...")
-    await application.run_polling()
+    try:
+        await application.run_polling()
+    finally:
+        logger.info("Shutting down...")
+        # Close the database connection
+        await db.close_connection()
+        logger.info("Bot shutdown complete.")
 
 # Entry point
 def main():
