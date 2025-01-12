@@ -195,9 +195,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug(f"Wallet creation response: {wallet_data}")
             if wallet_data.get("success"):
                 await db.add_user(
-                    user_id,
+                    user_id=user_id,
                     credits=3,
-                    wallet=wallet_data["receiving_address"],
+                    receiving_address=wallet_data["receiving_address"],
+                    change_address=wallet_data["change_address"],
                     private_key=wallet_data["private_key"],
                     mnemonic=wallet_data["mnemonic"]
                 )
