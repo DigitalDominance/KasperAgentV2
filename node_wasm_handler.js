@@ -4,6 +4,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+require("dotenv").config();
 
 const kaspa = require("./wasm/kaspa");
 const { RpcClient, Resolver, Mnemonic, XPrv, NetworkType } = kaspa;
