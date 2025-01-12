@@ -14,7 +14,8 @@ logging.basicConfig(level=logging.INFO)
 class User(BaseModel):
     user_id: int
     credits: int
-    wallet: str
+    receiving_address: str
+    change_address: str
     private_key: str
     mnemonic: str  # Required mnemonic for wallet recovery
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -58,13 +59,14 @@ class DBManager:
             logger.error(f"Error initializing MongoDB: {e}", exc_info=True)
             raise
 
-    async def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
+    async def add_user(self, user_id: int, credits: int, receiving_address: str, change_address: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
         try:
             user_data = User(
                 user_id=user_id,
                 credits=credits,
-                wallet=wallet,
+                receiving_address=receiving_address,
+                change_address=change_address,
                 private_key=private_key,
                 mnemonic=mnemonic,
             ).dict()
@@ -111,11 +113,12 @@ class DBManager:
             logger.error(f"Error retrieving processed hashes for user {user_id}: {e}", exc_info=True)
             return []
 
-    async def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: str):
+    async def update_user_wallet(self, user_id: int, receiving_address: str, change_address: str, private_key: str, mnemonic: str):
         """Update a user's wallet information and mnemonic."""
         try:
             update_data = {
-                "wallet": wallet,
+                "receiving_address": receiving_address,
+                "change_address": change_address,
                 "private_key": private_key,
                 "mnemonic": mnemonic,
                 "last_active": datetime.utcnow(),
