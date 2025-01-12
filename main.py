@@ -173,7 +173,7 @@ async def topup_command(update, context):
                     f"⏳ Time remaining: {minutes:02}:{seconds:02}\n\n"
                     "✅ Finalize the process with /endtopup once your deposit is complete."
                 )
-                countdown_time -= 10
+                countdown_time -= 5
 
                 # Perform the KRC20 scan
                 params = {"address": wallet_address, "tick": "KASPER"}
