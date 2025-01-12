@@ -243,7 +243,7 @@ async def endtopup_command(update, context):
             data = response.json()
 
             total_credits = 0
-            processed_hashes = db.get_processed_hashes(user_id
+            processed_hashes = db.get_processed_hashes(user_id)
             for tx in data.get("result", []):
                 hash_rev = tx.get("hashRev")
                 if hash_rev and hash_rev not in processed_hashes:
