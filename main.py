@@ -182,51 +182,35 @@ async def generate_openai_response(user_text: str) -> str:
 async def start_command(update, context):
     """Handles the /start command."""
     user_id = update.effective_user.id
-    max_retries = 5  # Maximum number of retries for wallet creation
-    retry_delay = 2  # Delay between retries (in seconds)
-    
-    try:
-        async with Lock():
+    async with user_locks[user_id]:
+        try:
             user = db.get_user(user_id)
-            if not user:
-                for attempt in range(1, max_retries + 1):
-                    wallet_data = wallet_backend.create_wallet()
-                    
-                    if wallet_data.get("success") and all(
-                        field in wallet_data for field in ["receiving_address", "private_key", "mnemonic"]
-                    ):
-                        db.add_user(
-                            user_id,
-                            credits=3,
-                            wallet=wallet_data["receiving_address"],
-                            private_key=wallet_data["private_key"],
-                            mnemonic=wallet_data["mnemonic"],
-                        )
-                        await update.message.reply_text(
-                            "👻 *Welcome, brave spirit!*\n\n"
-                            "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
-                            "🌟 Let the adventure begin! Type /balance to check your credits.",
-                            parse_mode="Markdown",
-                        )
-                        return
-                    
-                    logger.warning(
-                        f"Wallet creation failed (attempt {attempt}/{max_retries}). Retrying in {retry_delay}s..."
-                    )
-                    await asyncio.sleep(retry_delay)
-                
-                logger.error("Wallet creation failed after multiple attempts.")
+            if user:
                 await update.message.reply_text(
-                    "❌ Failed to create your wallet after several attempts. Please try again later."
+                    f"👻 Welcome back, spirit! You have {user.get('credits', 0)} credits remaining."
+                )
+                return
+
+            wallet_data = wallet_backend.create_wallet()
+            if wallet_data.get("success"):
+                db.add_user(
+                    user_id,
+                    credits=3,
+                    wallet=wallet_data["receiving_address"],
+                    private_key=wallet_data["private_key"],
+                    mnemonic=wallet_data["mnemonic"]
+                )
+                await update.message.reply_text(
+                    "👻 *Welcome, brave spirit!*\n\n"
+                    "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
+                    "🌟 Let the adventure begin! Type /balance to check your credits.",
+                    parse_mode="Markdown"
                 )
             else:
-                total_credits = user.get("credits", 0)
-                await update.message.reply_text(
-                    f"👻 Welcome back, spirit! You have {total_credits} credits remaining. Use /topup to gather more!"
-                )
-    except Exception as e:
-        logger.error(f"Error in start_command: {e}", exc_info=True)
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+                await update.message.reply_text("❌ Failed to create your wallet. Please try again later.")
+        except Exception as e:
+            logger.error(f"Error in /start command: {e}")
+            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 
 
