@@ -1,4 +1,4 @@
-const kaspa = require('../../../../nodejs/kaspa');
+const kaspa = require('./wasm/kaspa');
 const {
     Mnemonic,
     XPrv,
