@@ -187,6 +187,7 @@ async def balance_command(update, context):
 
 
 # /topup Command Handler
+# /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
@@ -213,8 +214,8 @@ async def topup_command(update, context):
         if not old_task.done():
             old_task.cancel()
 
-    # Start a new scan with countdown
-    async def scan_with_countdown():
+    # Start a new scan with real-time deposit processing
+    async def scan_with_real_time_processing():
         try:
             end_time = datetime.utcnow() + timedelta(minutes=5)
             async with httpx.AsyncClient() as client:
@@ -223,24 +224,60 @@ async def topup_command(update, context):
                     minutes, seconds = divmod(remaining.total_seconds(), 60)
                     countdown_text = f"⏳ Remaining Time: {int(minutes)}:{int(seconds):02d}"
 
+                    # Update countdown message
                     try:
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
-                            text=(
-                                f"👻 *Spook-tacular Top-Up!*\n\n"
-                                f"🔑 Deposit Address: `{wallet_address}`\n"
-                                f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
-                                f"{countdown_text}\n\n"
-                                "✅ After depositing, finalize the process by using the `/endtopup` command."
-                            ),
+                            text=(f"👻 *Spook-tacular Top-Up!*\n\n"
+                                  f"🔑 Deposit Address: `{wallet_address}`\n"
+                                  f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
+                                  f"{countdown_text}\n\n"
+                                  "✅ After depositing, finalize the process by using the `/endtopup` command."),
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
 
-                    await asyncio.sleep(5)
+                    # Fetch transaction data
+                    response = await client.get(
+                        f"{KRC20_API_BASE_URL}/oplist",
+                        params={"address": wallet_address, "tick": "KASPER"}
+                    )
+                    response.raise_for_status()
+                    data = response.json()
 
+                    # Debugging: Log the API response
+                    logger.info(f"API Response for oplist: {data}")
+
+                    # Process new transactions
+                    processed_hashes = db.get_processed_hashes(user_id)
+                    for tx in data.get("result", []):
+                        logger.info(f"Processing transaction: {tx}")
+
+                        hash_rev = tx.get("hashRev")
+                        if hash_rev and hash_rev not in processed_hashes:
+                            kasper_amount = int(tx.get("amt", 0))
+                            credits = kasper_amount // CREDIT_CONVERSION_RATE
+
+                            # Save processed hash
+                            db.add_processed_hash(user_id, hash_rev)
+
+                            # Update user's credits
+                            db.update_user_credits(user_id, user.get("credits", 0) + credits)
+
+                            # Notify user of successful deposit
+                            await context.bot.send_message(
+                                chat_id=update.effective_chat.id,
+                                text=(f"👻 *Ghastly good news!* We've detected a deposit of {credits} credits "
+                                      f"to your account! Your spectral wallet is growing! 🎉\n\n"
+                                      "👻 Use /balance to see your updated credits!"),
+                                parse_mode="Markdown"
+                            )
+
+                    await asyncio.sleep(5)  # Update every 5 seconds
+
+                # Notify when the scan times out
                 await context.bot.edit_message_text(
                     chat_id=update.effective_chat.id,
                     message_id=message.message_id,
@@ -253,8 +290,8 @@ async def topup_command(update, context):
         except Exception as e:
             logger.error(f"Error during scan: {e}")
 
-    context.chat_data["scan_task"] = asyncio.create_task(scan_with_countdown())
-
+    # Start the real-time scan task
+    context.chat_data["scan_task"] = asyncio.create_task(scan_with_real_time_processing())
 
 # /endtopup Command Handler
 # /endtopup Command Handler
