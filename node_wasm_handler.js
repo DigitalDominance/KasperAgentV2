@@ -22,17 +22,26 @@ const rpc = new RpcClient({
 });
 
 // Singleton Database Connection
-async function connectToDatabase() {
-    if (db) return db;
+let dbPromise = null;
 
-    try {
-        const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
-        await client.connect();
-        db = client.db("kasperdb");
-    } catch (err) {
-        throw new Error(`Failed to connect to MongoDB: ${err.message}`);
-    }
-    return db;
+async function connectToDatabase() {
+    if (dbPromise) return dbPromise;
+
+    dbPromise = (async () => {
+        try {
+            console.log("Connecting to MongoDB...");
+            const client = new MongoClient(mongoUri, { useUnifiedTopology: true });
+            await client.connect();
+            console.log("MongoDB connected.");
+            return client.db("kasperdb");
+        } catch (err) {
+            console.error(`Failed to connect to MongoDB: ${err.message}`);
+            dbPromise = null; // Reset if connection fails
+            throw err;
+        }
+    })();
+
+    return dbPromise;
 }
 
 // Retrieve user's private key from the database
