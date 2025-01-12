@@ -199,7 +199,7 @@ async def start_command(update, context):
                     "👻 *Welcome, brave spirit!*\n\n"
                     "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
                     "🌟 Let the adventure begin! Type /balance to check your credits.",
-                    parse_mode="Markdown"
+                    parse_mode="MarkdownV2"
                 )
             else:
                 error_message = wallet_data.get("error", "Failed to create a wallet.")
@@ -242,13 +242,13 @@ async def topup_command(update, context):
     rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
     message = await update.message.reply_text(
-        f"👻 *Spook-tacular Top-Up!*\n\n"
+        f"👻 Spook-tacular Top-Up!\n\n"
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
         "✅ After depositing, finalize the process by using the /endtopup command."
-	"💡 _If your deposit is not recognized within 5:00, restart using_ /topup.",
-        parse_mode="Markdown",
+	"💡 If your deposit is not recognized within 5:00, restart using_ /topup.",
+        parse_mode="MarkdownV2",
     )
 
     # Cancel any previous scan
@@ -272,13 +272,13 @@ async def topup_command(update, context):
                         await context.bot.edit_message_text(
                             chat_id=update.effective_chat.id,
                             message_id=message.message_id,
-                            text=(f"👻 *Spook-tacular Top-Up!*\n\n"
+                            text=(f"👻 Spook-tacular Top-Up!\n\n"
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
 				  "✅ After depositing, finalize the process by using the /endtopup command.",
-                                  "💡 _If your deposit is not recognized within 5:00, restart using_ /topup."),
-                            parse_mode="Markdown",
+                                  "💡 If your deposit is not recognized within 5:00, restart using_ /topup."),
+                            parse_mode="MarkdownV2",
                         )
                     except Exception as edit_error:
                         logger.error(f"Error updating countdown: {edit_error}")
