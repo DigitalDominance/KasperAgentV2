@@ -11,14 +11,19 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Define user schema using pydantic
+from pydantic import BaseModel, Field
+from typing import List
+from datetime import datetime
+
 class User(BaseModel):
     user_id: int
     credits: int
     wallet: str
     private_key: str
-    mnemonic: Optional[str] = None  # To store the mnemonic for wallet recovery
+    mnemonic: str  # Required mnemonic for wallet recovery
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_active: Optional[datetime] = None
+    processed_hashes: List[str] = Field(default_factory=list)  # To store processed transaction hashes
 
 
 class DBManager:
@@ -73,26 +78,26 @@ class DBManager:
             logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
-    def add_processed_hash(self, user_id: int, hash_rev: str):
-        """Add a processed hash for a user."""
-        try:
-            self.hashes.update_one(
-                {"user_id": user_id},
-                {"$addToSet": {"hashes": hash_rev}},
-                upsert=True
-            )
-            logger.info(f"Processed hash {hash_rev} added for user {user_id}.")
-        except Exception as e:
-            logger.error(f"Error adding processed hash for user {user_id}: {e}")
+   # Add processed hash to the database
+def add_processed_hash(self, user_id: int, hash_rev: str):
+    try:
+        self.users.update_one(
+            {"user_id": user_id},
+            {"$addToSet": {"processed_hashes": hash_rev}},
+        )
+        logger.info(f"Added processed hash for user {user_id}: {hash_rev}")
+    except Exception as e:
+        logger.error(f"Error adding processed hash for user {user_id}: {e}")
 
-    def get_processed_hashes(self, user_id: int) -> set:
-        """Get processed hashes for a user."""
-        try:
-            record = self.hashes.find_one({"user_id": user_id})
-            return set(record.get("hashes", [])) if record else set()
-        except Exception as e:
-            logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
-            return set()
+# Get processed hashes for a user
+def get_processed_hashes(self, user_id: int) -> list:
+    try:
+        user = self.users.find_one({"user_id": user_id}, {"processed_hashes": 1})
+        return user.get("processed_hashes", []) if user else []
+    except Exception as e:
+        logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
+        return []
+
 
     def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
         """Update a user's wallet information and mnemonic."""
