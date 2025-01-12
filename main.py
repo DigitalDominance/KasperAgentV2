@@ -148,7 +148,7 @@ async def generate_openai_response(user_text: str) -> str:
     }
     persona = get_kasper_persona()
     payload = {
-        "model": "gpt-4",
+        "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": persona},
             {"role": "user", "content": user_text}
