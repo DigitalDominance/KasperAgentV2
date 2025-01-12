@@ -180,43 +180,50 @@ async def generate_openai_response(user_text: str) -> str:
             return "❌ Boo! An error occurred while channeling Kasper's ghostly response. Try again, spirit friend!"
 
 # /start Command Handler
-@rate_limit(5)  # Allows 5 invocations per minute
+# /start Command Handler
+@rate_limit(5)  # Limit to 5 invocations per minute
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command."""
     user_id = update.effective_user.id
     logger.info(f"Received /start command from user {user_id}")
     try:
+        # Check if the user exists in the database
         user = await db.get_user(user_id)
-        if not user:
-            logger.info(f"User {user_id} not found. Creating new wallet.")
-            wallet_data = await wallet_backend.create_wallet()
-            logger.debug(f"Wallet creation response: {wallet_data}")
-            if wallet_data.get("success"):
-                await db.add_user(
-                    user_id=user_id,
-                    credits=3,
-                    receiving_address=wallet_data["receiving_address"],
-                    change_address=wallet_data["change_address"],
-                    private_key=wallet_data["private_key"],
-                    mnemonic=wallet_data["mnemonic"]
-                )
-                await update.message.reply_text(
-                    "👻 Welcome, brave spirit!\n\n"
-                    "🎁 You start with 3 daily free credits! Use /topup to acquire more ethereal power.\n\n"
-                    "🌟 Let the adventure begin! Type /balance to check your credits.",
-                    parse_mode="Markdown"
-                )
-                logger.info(f"User {user_id} wallet created and added to the database.")
-            else:
-                error_message = wallet_data.get("error", "Failed to create a wallet.")
-                await update.message.reply_text(f"⚠️ {error_message} Please try again later.")
-                logger.warning(f"Wallet creation failed for user {user_id}: {error_message}")
-        else:
+        if user:
             total_credits = user.get("credits", 0)
             await update.message.reply_text(
                 f"👻 Welcome back, spirit! You have {total_credits} credits remaining. Use /topup to gather more!"
             )
             logger.info(f"User {user_id} reconnected with {total_credits} credits.")
+            return
+
+        # If user does not exist, create a new wallet
+        await update.message.reply_text("👻 Creating your wallet... Hang tight, brave spirit!")
+
+        wallet_data = await wallet_backend.create_wallet()
+
+        if wallet_data.get("success"):
+            # Add the user to the database with their wallet details
+            await db.add_user(
+                user_id=user_id,
+                credits=3,  # Initial free credits
+                receiving_address=wallet_data["receiving_address"],
+                change_address=wallet_data["change_address"],
+                private_key=wallet_data["private_key"],
+                mnemonic=wallet_data["mnemonic"]
+            )
+            await update.message.reply_text(
+                "🎉 Your wallet is ready! 👻\n\n"
+                "🎁 You start with 3 free credits. Use /topup to get more!\n\n"
+                "🌟 Let the adventure begin! Type /balance to check your credits."
+            )
+            logger.info(f"Wallet created and user {user_id} added to the database.")
+        else:
+            # Handle wallet creation failure
+            error_message = wallet_data.get("error", "Unknown error occurred while creating your wallet.")
+            await update.message.reply_text(f"❌ Wallet creation failed: {error_message}")
+            logger.error(f"Wallet creation failed for user {user_id}: {error_message}")
+
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
