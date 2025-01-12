@@ -370,10 +370,6 @@ async def topup_command(update, context):
             if not wallet_address:
                 await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
                 return
-                
-        except Exception as e:
-            logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
-            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
             # Cancel any active scan
             if "scan_task" in context.chat_data:
@@ -387,57 +383,47 @@ async def topup_command(update, context):
                 del context.chat_data["scan_task"]
 
             # Fetch transaction data
-            try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"{KRC20_API_BASE_URL}/oplist",
-                        params={"address": wallet_address, "tick": "KASPER"}
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    logger.info(f"API Response for oplist: {data}")
-            except Exception as api_error:
-                logger.error(f"Error fetching transaction data: {api_error}", exc_info=True)
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="❌ Error fetching transaction data. Please try again later."
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{KRC20_API_BASE_URL}/oplist",
+                    params={"address": wallet_address, "tick": "KASPER"}
                 )
-                return  # Properly exit the function after handling the error
+                response.raise_for_status()
+                data = response.json()
+                logger.info(f"API Response for oplist: {data}")
 
             # Calculate credits from new transactions
-            try:
-                total_credits = 0
-                processed_hashes = await db.get_processed_hashes(user_id)
-                for tx in data.get("result", []):
-                    logger.info(f"Processing transaction: {tx}")
+            total_credits = 0
+            processed_hashes = await db.get_processed_hashes(user_id)
+            for tx in data.get("result", []):
+                logger.info(f"Processing transaction: {tx}")
 
-                    hash_rev = tx.get("hashRev")
-                    if hash_rev and hash_rev not in processed_hashes:
-                        kasper_amount = int(tx.get("amt", 0))
-                        credits = kasper_amount // CREDIT_CONVERSION_RATE
-                        total_credits += credits
+                hash_rev = tx.get("hashRev")
+                if hash_rev and hash_rev not in processed_hashes:
+                    kasper_amount = int(tx.get("amt", 0))
+                    credits = kasper_amount // CREDIT_CONVERSION_RATE
+                    total_credits += credits
 
-                        # Save processed hash
-                        await db.add_processed_hash(user_id, hash_rev)
+                    # Save processed hash
+                    await db.add_processed_hash(user_id, hash_rev)
 
-                if total_credits > 0:
-                    # Update user's credits
-                    new_credits = user.get("credits", 0) + total_credits
-                    await db.update_user_credits(user_id, new_credits)
-                    await update.message.reply_text(
-                        f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
-                        "👻 Use /balance to see your updated credits!",
-                        parse_mode="Markdown"
-                    )
-                    logger.info(f"User {user_id} credits updated by {total_credits} credits.")
-                else:
-                    await update.message.reply_text("❌ No new KASPER deposits found.")
-                    logger.info(f"No new deposits found for user {user_id}.")
-            except Exception as process_error:
-                logger.error(f"Error processing endtopup_command: {process_error}", exc_info=True)
-                await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
+            if total_credits > 0:
+                # Update user's credits
+                new_credits = user.get("credits", 0) + total_credits
+                await db.update_user_credits(user_id, new_credits)
+                await update.message.reply_text(
+                    f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
+                    "👻 Use /balance to see your updated credits!",
+                    parse_mode="Markdown"
+                )
+                logger.info(f"User {user_id} credits updated by {total_credits} credits.")
+            else:
+                await update.message.reply_text("❌ No new KASPER deposits found.")
+                logger.info(f"No new deposits found for user {user_id}.")
 
-
+        except Exception as e:
+            logger.error(f"Error in endtopup_command for user {user_id}: {e}", exc_info=True)
+            await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
     # /text Command Handler for AI
     async def handle_text_message(update, context):
