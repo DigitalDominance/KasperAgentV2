@@ -3,9 +3,7 @@ import os
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from collections import defaultdict
 from io import BytesIO
-from rate_limit import rate_limit
 
 import httpx
 from pydub import AudioSegment
@@ -21,7 +19,7 @@ from telegram.ext import (
 
 from db_manager import DBManager
 from wallet_backend import WalletBackend
-from rate_limit import rate_limit  # Assuming you created a rate_limit.py as per earlier instructions
+from rate_limit import rate_limit  # Ensure rate_limit.py exists in the project
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
@@ -41,11 +39,6 @@ logger = logging.getLogger(__name__)
 # Initialize dependencies
 db = DBManager()
 wallet_backend = WalletBackend()
-USER_MESSAGE_LIMITS = defaultdict(lambda: {
-    "count": 0,
-    "reset_time": datetime.utcnow() + timedelta(hours=24),
-    "last_message_time": None
-})
 market_data_cache = {
     "price": "N/A",
     "market_cap": "N/A",
@@ -317,6 +310,11 @@ async def endtopup_job(context: CallbackContext):
                 # Save processed hash
                 await db.add_processed_hash(user_id, hash_rev)
 
+        user = await db.get_user(user_id)
+        if user is None:
+            logger.warning(f"User {user_id} not found during top-up processing.")
+            return
+
         if total_credits > 0:
             # Update user's credits
             new_credits = user.get("credits", 0) + total_credits
@@ -445,13 +443,21 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
+# Startup Handler
+async def on_startup(application: ApplicationBuilder):
+    """Handles startup events."""
+    await db.init_db()
+    logger.info("Database initialized.")
+
+# Shutdown Handler
+async def on_shutdown(application: ApplicationBuilder):
+    """Handles shutdown events."""
+    await db.close_connection()
+    logger.info("Database connection closed.")
+
 # Main asynchronous function
 async def main_async():
     """Main asynchronous function to set up the bot."""
-    # Initialize the database
-    await db.init_db()
-
-    # Initialize Telegram bot application
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # Register command handlers
@@ -464,14 +470,12 @@ async def main_async():
     # Schedule periodic market data updates using JobQueue
     application.job_queue.run_repeating(fetch_kasper_market_data, interval=300, first=0)
 
+    # Assign startup and shutdown handlers
+    application.on_startup.append(on_startup)
+    application.on_shutdown.append(on_shutdown)
+
     logger.info("🚀 Starting Kasper AI Bot...")
-    try:
-        await application.run_polling()
-    finally:
-        logger.info("Shutting down...")
-        # Close the database connection
-        await db.close_connection()
-        logger.info("Bot shutdown complete.")
+    await application.run_polling()
 
 # Entry point
 def main():
