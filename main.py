@@ -111,7 +111,6 @@ async def generate_openai_response(user_text: str) -> str:
             return "❌ An error occurred while generating a response."
 
 # /topup Command Handler
-# /topup Command Handler
 async def topup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
@@ -125,93 +124,37 @@ async def topup_command(update, context):
         await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    await update.message.reply_text(f"👻 Please deposit KASPER to this address: {wallet_address}.")
-    start_time = datetime.utcnow()
-    max_wait_time = timedelta(minutes=10)
+    await update.message.reply_text(
+        f"👻 Please deposit KASPER to this address: {wallet_address}.\n\n"
+        "✅ After depositing, finalize the process by using the `/endtopup` command.\n\n"
+        "⏳ Note: The top-up scan will automatically stop after 5 minutes."
+    )
 
-    try:
-        async with httpx.AsyncClient() as client:
-            while datetime.utcnow() - start_time < max_wait_time:
-                # Check KRC20 balance
-                response = await client.get(f"{KRC20_API_BASE_URL}/address/{wallet_address}/token/KASPER")
+    context.chat_data["scan_active"] = True
+    context.chat_data["scan_timer"] = datetime.utcnow() + timedelta(minutes=5)
+
+    async with httpx.AsyncClient() as client:
+        while context.chat_data.get("scan_active", False):
+            try:
+                response = await client.get(f"{KRC20_API_BASE_URL}/op/{wallet_address}")
                 response.raise_for_status()
                 data = response.json()
-                balance_info = data.get("result", [{}])[0]
-                kasper_balance = int(balance_info.get("balance", 0))
 
-                if kasper_balance > 0:
-                    logger.info(f"KRC20 balance detected: {kasper_balance} sompi")
+                for tx in data.get("result", []):
+                    if tx.get("tick") == "KASPER":
+                        logger.info(f"KASPER transaction detected: {tx}")
 
-                    # Step 1: Send 20 KAS to user's wallet for gas fees
-                    gas_fee_result = wallet.send_kas_transaction(
-                        from_address=MAIN_WALLET_ADDRESS,
-                        to_address=wallet_address,
-                        amount=20 * (10 ** 8),  # 20 KAS in sompi
-                        private_key=MAIN_WALLET_PRIVATE_KEY,
-                    )
-                    if not gas_fee_result.get("success"):
-                        logger.error(f"Gas fee transaction failed: {gas_fee_result.get('error')}")
-                        await update.message.reply_text("❌ Failed to send gas fees. Please try again.")
-                        return
+                if datetime.utcnow() >= context.chat_data["scan_timer"]:
+                    context.chat_data["scan_active"] = False
+                    await update.message.reply_text("⏳ The top-up scan has timed out. Please use `/topup` to restart.")
 
-                    logger.info("Gas fees sent successfully.")
+            except Exception as e:
+                logger.error(f"Error during top-up scan: {e}")
 
-                    # Step 2: Send KRC20 tokens from user's wallet to main wallet
-                    transaction_result = wallet.send_krc20_transaction(
-                        from_address=wallet_address,
-                        to_address=MAIN_WALLET_ADDRESS,
-                        amount=kasper_balance,
-                        user_id=user_id,  # Retrieves private key from MongoDB
-                        token_symbol="KASPER",
-                    )
-                    if not transaction_result.get("success"):
-                        logger.error(f"KRC20 transaction failed: {transaction_result.get('error')}")
-                        await update.message.reply_text("❌ Failed to send KRC20 tokens. Please try again.")
-                        return
+            await asyncio.sleep(10)
 
-                    logger.info("KRC20 tokens sent successfully.")
-
-                    # Step 3: Check remaining KAS balance in user's wallet
-                    kas_balance_response = wallet.get_balance(wallet_address)
-                    if not kas_balance_response.get("success"):
-                        logger.error(f"Failed to check KAS balance: {kas_balance_response.get('error')}")
-                        await update.message.reply_text("❌ Failed to check KAS balance. Please try again.")
-                        return
-
-                    remaining_kas_balance = int(kas_balance_response.get("balance", 0))
-                    logger.info(f"Remaining KAS balance: {remaining_kas_balance} sompi")
-
-                    # Step 4: Send remaining KAS back to main wallet
-                    if remaining_kas_balance > 0:
-                        kas_return_result = wallet.send_kas_transaction(
-                            from_address=wallet_address,
-                            to_address=MAIN_WALLET_ADDRESS,
-                            amount=remaining_kas_balance,
-                            user_id=user_id,  # Retrieves private key from MongoDB
-                        )
-                        if not kas_return_result.get("success"):
-                            logger.error(f"Failed to return remaining KAS: {kas_return_result.get('error')}")
-                            await update.message.reply_text("❌ Failed to return remaining KAS. Please try again.")
-                            return
-
-                        logger.info("Remaining KAS sent back successfully.")
-
-                    # Add credits to user's account
-                    credits_to_add = kasper_balance // CREDIT_CONVERSION_RATE
-                    db.update_user_credits(user_id, user.get("credits", 0) + credits_to_add)
-                    await update.message.reply_text(f"✅ Top-up successful! Added {credits_to_add} credits to your account.")
-                    return
-                else:
-                    logger.info("No KRC20 balance detected. Retrying...")
-                await asyncio.sleep(10)
-
-        await update.message.reply_text("⏳ Top-up process timed out. Please try again later.")
-    except Exception as e:
-        logger.error(f"Error in topup_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
-
-# /balance Command Handler
-async def balance_command(update, context):
+# /endtopup Command Handler
+async def endtopup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
 
@@ -219,57 +162,35 @@ async def balance_command(update, context):
         await update.message.reply_text("❌ You need to /start first to create a wallet.")
         return
 
-    total_credits = user.get("credits", 0)
-    await update.message.reply_text(f"👻 You have {total_credits} credits available.")
-
-# Command Handlers
-async def start_command(update, context):
-    user_id = update.effective_user.id
-    try:
-        user = db.get_user(user_id)
-        if not user:
-            wallet_data = wallet.create_wallet()
-            if wallet_data and wallet_data.get("success"):
-                wallet_address = wallet_data.get("receiving_address")
-                private_key = wallet_data.get("private_key")
-                if not wallet_address or not private_key:
-                    raise ValueError("Wallet data is incomplete")
-
-                db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
-                await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Use /topup to add credits to your account."
-                )
-            else:
-                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
-        else:
-            total_credits = user.get("credits", 0)
-            await update.message.reply_text(
-                f"👻 Welcome back! You have {total_credits} credits in total. Use /topup to add more credits."
-            )
-    except Exception as e:
-        logger.error(f"Error in start_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-
-async def handle_text_message(update, context):
-    user_id = update.effective_user.id
-    user_text = update.message.text.strip()
-    user = db.get_user(user_id)
-
-    if not user or user.get("credits", 0) <= 0:
-        await update.message.reply_text("❌ You have no credits remaining.")
+    wallet_address = user.get("wallet")
+    if not wallet_address:
+        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
         return
 
-    try:
-        await update.message.reply_text("👻 KASPER is thinking...")
-        ai_response = await generate_openai_response(user_text)
-        mp3_audio = await elevenlabs_tts(ai_response)
-        ogg_audio = convert_mp3_to_ogg(mp3_audio)
-        db.update_user_credits(user_id, user["credits"] - 1)
-        await update.message.reply_text(ai_response)
-        await update.message.reply_voice(voice=ogg_audio)
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        await update.message.reply_text("❌ An error occurred.")
+    context.chat_data["scan_active"] = False
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(f"{KRC20_API_BASE_URL}/op/{wallet_address}")
+            response.raise_for_status()
+            data = response.json()
+
+            total_credits = 0
+            for tx in data.get("result", []):
+                if tx.get("tick") == "KASPER":
+                    kasper_amount = int(tx.get("amt", 0))
+                    credits = kasper_amount // CREDIT_CONVERSION_RATE
+                    total_credits += credits
+
+            if total_credits > 0:
+                db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
+                await update.message.reply_text(
+                    f"✅ Top-up successful! Added {total_credits} credits to your account."
+                )
+            else:
+                await update.message.reply_text("❌ No KASPER deposits found.")
+        except Exception as e:
+            logger.error(f"Error in endtopup_command: {e}")
+            await update.message.reply_text("❌ An error occurred during the top-up process. Please try again later.")
 
 # Main function
 def main():
@@ -277,11 +198,11 @@ def main():
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     logger.info("🚀 Starting Kasper AI Bot...")
-    application
     application.run_polling()
 
 if __name__ == "__main__":
