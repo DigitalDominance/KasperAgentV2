@@ -510,8 +510,14 @@ async def main_async():
     # Initialize the database
     await db.init_db()
 
-    # Initialize Telegram bot application
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    # Initialize Telegram bot application with startup and shutdown callbacks
+    application = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .post_init(on_startup)       # Correctly assign on_startup
+        .post_shutdown(on_shutdown) # Correctly assign on_shutdown
+        .build()
+    )
 
     # Register command handlers
     application.add_handler(CommandHandler("start", start_command))
@@ -519,10 +525,6 @@ async def main_async():
     application.add_handler(CommandHandler("topup", topup_command))
     application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
-
-    # Assign startup and shutdown callbacks
-    application.on_startup.append(on_startup)
-    application.on_shutdown.append(on_shutdown)
 
     logger.info("🚀 Starting Kasper AI Bot...")
     await application.run_polling()
