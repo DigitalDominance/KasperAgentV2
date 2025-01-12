@@ -220,6 +220,7 @@ async def topup_command(update, context):
 
 
 # /endtopup Command Handler
+# /endtopup Command Handler
 async def endtopup_command(update, context):
     user_id = update.effective_user.id
     user = db.get_user(user_id)
@@ -229,6 +230,11 @@ async def endtopup_command(update, context):
         return
 
     wallet_address = user.get("wallet")
+    if not wallet_address:
+        await update.message.reply_text("❌ Your wallet is not set up. Please contact support.")
+        return
+
+    # Cancel any active scan
     if "scan_task" in context.chat_data:
         scan_task = context.chat_data["scan_task"]
         if not scan_task.done():
@@ -236,23 +242,34 @@ async def endtopup_command(update, context):
 
     try:
         async with httpx.AsyncClient() as client:
+            # Fetch transaction data for the wallet address
             response = await client.get(
-                f"{KRC20_API_BASE_URL}/oplist", params={"address": wallet_address, "tick": "KASPER"}
+                f"{KRC20_API_BASE_URL}/oplist",
+                params={"address": wallet_address, "tick": "KASPER"}
             )
             response.raise_for_status()
             data = response.json()
 
+            # Debugging: Log the API response to ensure it's being fetched
+            logger.info(f"API Response for oplist: {data}")
+
+            # Calculate credits from new transactions
             total_credits = 0
             processed_hashes = db.get_processed_hashes(user_id)
             for tx in data.get("result", []):
+                logger.info(f"Processing transaction: {tx}")  # Debugging: Log each transaction
+
                 hash_rev = tx.get("hashRev")
                 if hash_rev and hash_rev not in processed_hashes:
                     kasper_amount = int(tx.get("amt", 0))
                     credits = kasper_amount // CREDIT_CONVERSION_RATE
                     total_credits += credits
+
+                    # Save processed hash
                     db.add_processed_hash(user_id, hash_rev)
 
             if total_credits > 0:
+                # Update user's credits
                 db.update_user_credits(user_id, user.get("credits", 0) + total_credits)
                 await update.message.reply_text(
                     f"✅ *Spooky success!* Added {total_credits} credits to your account.\n\n"
