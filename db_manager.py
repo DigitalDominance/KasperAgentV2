@@ -1,6 +1,6 @@
 from pymongo import MongoClient, errors
 from pymongo.collection import ReturnDocument
-from pydantic import BaseModel, ValidationError, Field
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import logging
 import os
@@ -11,10 +11,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # Define user schema using pydantic
-from pydantic import BaseModel, Field
-from typing import List
-from datetime import datetime
-
 class User(BaseModel):
     user_id: int
     credits: int
@@ -36,17 +32,15 @@ class DBManager:
             self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
             self.db = self.client["kasperdb"]
             self.users = self.db["users"]
-            self.hashes = self.db["processed_hashes"]  # Collection for processed hashes
             self.users.create_index("user_id", unique=True)
-            self.hashes.create_index("user_id")
         except errors.ServerSelectionTimeoutError as e:
-            logging.error(f"Error connecting to MongoDB: {e}")
+            logger.error(f"Error connecting to MongoDB: {e}")
             raise
         except Exception as e:
-            logging.error(f"Unexpected error occurred: {e}")
+            logger.error(f"Unexpected error occurred: {e}")
             raise
 
-    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
+    def add_user(self, user_id: int, credits: int, wallet: str, private_key: str, mnemonic: str):
         """Add a new user to the database."""
         try:
             user_data = User(
@@ -78,28 +72,27 @@ class DBManager:
             logger.error(f"Error retrieving user {user_id}: {e}")
             return None
 
-   # Add processed hash to the database
-def add_processed_hash(self, user_id: int, hash_rev: str):
-    try:
-        self.users.update_one(
-            {"user_id": user_id},
-            {"$addToSet": {"processed_hashes": hash_rev}},
-        )
-        logger.info(f"Added processed hash for user {user_id}: {hash_rev}")
-    except Exception as e:
-        logger.error(f"Error adding processed hash for user {user_id}: {e}")
+    def add_processed_hash(self, user_id: int, hash_rev: str):
+        """Add a processed transaction hash to the user's record."""
+        try:
+            self.users.update_one(
+                {"user_id": user_id},
+                {"$addToSet": {"processed_hashes": hash_rev}},
+            )
+            logger.info(f"Added processed hash for user {user_id}: {hash_rev}")
+        except Exception as e:
+            logger.error(f"Error adding processed hash for user {user_id}: {e}")
 
-# Get processed hashes for a user
-def get_processed_hashes(self, user_id: int) -> list:
-    try:
-        user = self.users.find_one({"user_id": user_id}, {"processed_hashes": 1})
-        return user.get("processed_hashes", []) if user else []
-    except Exception as e:
-        logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
-        return []
+    def get_processed_hashes(self, user_id: int) -> List[str]:
+        """Retrieve processed hashes for a user."""
+        try:
+            user = self.users.find_one({"user_id": user_id}, {"processed_hashes": 1})
+            return user.get("processed_hashes", []) if user else []
+        except Exception as e:
+            logger.error(f"Error retrieving processed hashes for user {user_id}: {e}")
+            return []
 
-
-    def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: Optional[str] = None):
+    def update_user_wallet(self, user_id: int, wallet: str, private_key: str, mnemonic: str):
         """Update a user's wallet information and mnemonic."""
         try:
             update_data = {
