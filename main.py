@@ -1,9 +1,10 @@
-import os
+# main.py
 import logging
 import asyncio
 from datetime import datetime, timedelta
 from collections import defaultdict
 from io import BytesIO
+from typing import Optional, List
 
 import httpx
 from pydub import AudioSegment
@@ -13,21 +14,15 @@ from telegram.ext import (
     MessageHandler,
     filters
 )
-from db_manager import DBManager
-from wallet_backend import WalletBackend  # Ensure this is the updated async version
 
-# Environment variables
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
-ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
-CREDIT_CONVERSION_RATE = 200 * (10 ** 8)  # 1 credit = 200 KASPER (in sompi)
-KRC20_API_BASE_URL = os.getenv("KRC20_API_BASE_URL", "https://api.kasplex.org/v1/krc20")
+from db_manager import DBManager
+from wallet_backend import WalletBackend
+import config
 
 # Logging setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO  # Change to DEBUG if needed
+    level=logging.INFO  # Change to DEBUG for more detailed logs
 )
 logger = logging.getLogger(__name__)
 
@@ -47,10 +42,11 @@ market_data_cache = {
 }
 
 async def fetch_kasper_market_data():
+    """Fetch market data for Kasper from CoinGecko."""
     global market_data_cache
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
-        "ids": "kasper",  # Kasper's ID on CoinGecko
+        "ids": "kasper",
         "vs_currencies": "usd",
         "include_market_cap": "true",
         "include_24hr_vol": "true"
@@ -74,11 +70,13 @@ async def fetch_kasper_market_data():
             market_data_cache = {"price": "N/A", "market_cap": "N/A", "daily_volume": "N/A"}
 
 async def update_market_data():
+    """Continuously update market data every 5 minutes."""
     while True:
         await fetch_kasper_market_data()
-        await asyncio.sleep(300)  # Update every 5 minutes
+        await asyncio.sleep(300)  # 5 minutes
 
 def get_kasper_persona():
+    """Define Kasper's persona for the AI responses."""
     return (
         "Do not say asterisk ( * ) or any punctuation of the sort. dont use it either. "
         "You are KASPER, the friendly ghost of Kaspa (KRC20). maintain the role "
@@ -95,8 +93,8 @@ def get_kasper_persona():
         "Don't mention XT as an exchange, they got hacked."
     )
 
-# Convert MP3 to OGG
 def convert_mp3_to_ogg(mp3_data: bytes) -> Optional[BytesIO]:
+    """Convert MP3 data to OGG format."""
     try:
         mp3_file = BytesIO(mp3_data)
         segment = AudioSegment.from_file(mp3_file, format="mp3")
@@ -112,12 +110,12 @@ def convert_mp3_to_ogg(mp3_data: bytes) -> Optional[BytesIO]:
         return ogg_buffer
     except Exception as e:
         logger.error(f"Audio conversion error: {e}", exc_info=True)
-        return None  # Return None to indicate failure
+        return None
 
-# ElevenLabs TTS
 async def elevenlabs_tts(text: str) -> bytes:
+    """Convert text to speech using ElevenLabs API."""
     headers = {
-        "xi-api-key": ELEVEN_LABS_API_KEY,
+        "xi-api-key": config.ELEVEN_LABS_API_KEY,
         "Content-Type": "application/json"
     }
     payload = {
@@ -131,7 +129,7 @@ async def elevenlabs_tts(text: str) -> bytes:
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_LABS_VOICE_ID}",
+                f"https://api.elevenlabs.io/v1/text-to-speech/{config.ELEVEN_LABS_VOICE_ID}",
                 headers=headers,
                 json=payload
             )
@@ -141,15 +139,15 @@ async def elevenlabs_tts(text: str) -> bytes:
             logger.error(f"Error in ElevenLabs TTS: {e}", exc_info=True)
             return b""
 
-# OpenAI Chat Completion
 async def generate_openai_response(user_text: str) -> str:
+    """Generate a response from OpenAI's GPT-4 based on user input."""
     headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Authorization": f"Bearer {config.OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
     persona = get_kasper_persona()
     payload = {
-        "model": "gpt-4",  # Corrected model name
+        "model": "gpt-4",
         "messages": [
             {"role": "system", "content": persona},
             {"role": "user", "content": user_text}
@@ -183,16 +181,16 @@ async def start_command(update, context):
     """Handles the /start command."""
     user_id = update.effective_user.id
     try:
-        user = await db.get_user(user_id)  # Added await
+        user = await db.get_user(user_id)  # Await the async method
         if not user:
-            wallet_data = await wallet_backend.create_wallet()  # Added await
+            wallet_data = await wallet_backend.create_wallet()  # Await the async method
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receiving_address")
                 private_key = wallet_data.get("private_key")
                 if not wallet_address or not private_key:
                     raise ValueError("Wallet data is incomplete")
 
-                await db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)  # Added await
+                await db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)  # Await the async method
                 await update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Use /topup to add credits to your account."
                 )
@@ -204,11 +202,12 @@ async def start_command(update, context):
                 f"👻 Welcome back! You have {total_credits} credits in total. Use /topup to add more credits."
             )
     except Exception as e:
-        logger.error(f"Error in start_command for user {user_id}: {e}")
+        logger.error(f"Error in start_command for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 # /balance Command Handler
 async def balance_command(update, context):
+    """Handles the /balance command."""
     user_id = update.effective_user.id
     try:
         user = await db.get_user(user_id)
@@ -224,6 +223,7 @@ async def balance_command(update, context):
 
 # /topup Command Handler
 async def topup_command(update, context):
+    """Handles the /topup command."""
     user_id = update.effective_user.id
     try:
         user = await db.get_user(user_id)
@@ -232,7 +232,7 @@ async def topup_command(update, context):
             return
 
         wallet_address = user.get("wallet")
-        rate_per_credit = CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
+        rate_per_credit = config.CREDIT_CONVERSION_RATE / (10 ** 8)  # Convert sompi to KASPER
 
         message = await update.message.reply_text(
             f"👻 *Spook-tacular Top-Up!*\n\n"
@@ -281,7 +281,7 @@ async def topup_command(update, context):
                         # Fetch transaction data
                         try:
                             response = await client.get(
-                                f"{KRC20_API_BASE_URL}/oplist",
+                                f"{config.KRC20_API_BASE_URL}/oplist",
                                 params={"address": wallet_address, "tick": "KASPER"}
                             )
                             response.raise_for_status()
@@ -303,7 +303,7 @@ async def topup_command(update, context):
                             hash_rev = tx.get("hashRev")
                             if hash_rev and hash_rev not in processed_hashes:
                                 kasper_amount = int(tx.get("amt", 0))
-                                credits = kasper_amount // CREDIT_CONVERSION_RATE
+                                credits = kasper_amount // config.CREDIT_CONVERSION_RATE
 
                                 if credits > 0:
                                     # Save processed hash and update credits atomically
@@ -344,6 +344,7 @@ async def topup_command(update, context):
 
 # /endtopup Command Handler
 async def endtopup_command(update, context):
+    """Handles the /endtopup command."""
     user_id = update.effective_user.id
     try:
         user = await db.get_user(user_id)
@@ -371,7 +372,7 @@ async def endtopup_command(update, context):
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{KRC20_API_BASE_URL}/oplist",
+                    f"{config.KRC20_API_BASE_URL}/oplist",
                     params={"address": wallet_address, "tick": "KASPER"}
                 )
                 response.raise_for_status()
@@ -394,7 +395,7 @@ async def endtopup_command(update, context):
                 hash_rev = tx.get("hashRev")
                 if hash_rev and hash_rev not in processed_hashes:
                     kasper_amount = int(tx.get("amt", 0))
-                    credits = kasper_amount // CREDIT_CONVERSION_RATE
+                    credits = kasper_amount // config.CREDIT_CONVERSION_RATE
                     if credits > 0:
                         total_credits += credits
 
@@ -418,6 +419,7 @@ async def endtopup_command(update, context):
 
 # /text Command Handler for AI
 async def handle_text_message(update, context):
+    """Handles text messages from users."""
     user_id = update.effective_user.id
     user_text = update.message.text.strip()
     try:
@@ -443,10 +445,11 @@ async def handle_text_message(update, context):
         logger.error(f"Error in handle_text_message for user {user_id}: {e}", exc_info=True)
         await update.message.reply_text("❌ An error occurred while processing your message. Please try again later.")
 
-# Main asynchronous function
 async def main_async():
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    """Main asynchronous function to set up the bot."""
+    application = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
 
+    # Register command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("topup", topup_command))
@@ -463,6 +466,7 @@ async def main_async():
     await application.run_polling()
 
 def main():
+    """Entry point of the application."""
     asyncio.run(main_async())
 
 if __name__ == "__main__":
