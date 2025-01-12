@@ -9,13 +9,11 @@ const {
     XPrv,
     PrivateKey,
     NetworkType,
-    createTransaction,
-    signTransaction,
     UtxoProcessor,
     UtxoContext,
     Generator,
-    addressFromScriptPublicKey,
     ScriptBuilder,
+    addressFromScriptPublicKey,
 } = kaspa;
 
 // MongoDB connection setup
@@ -136,6 +134,16 @@ async function sendTransaction(user_id, fromAddress, toAddress, amount) {
     }
 }
 
+// Create the KRC20 script
+function createKRC20Script(fromAddress, toAddress, amount, tokenSymbol) {
+    const scriptBuilder = new ScriptBuilder();
+    scriptBuilder.addData(`krc20|transfer|${tokenSymbol}|${amount}|${toAddress}`);
+    const script = scriptBuilder.createPayToScriptHashScript();
+    const scriptAddress = addressFromScriptPublicKey(script, "mainnet");
+
+    return { script, scriptAddress };
+}
+
 // Send a KRC20 token transaction
 async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tokenSymbol = "KASPER") {
     try {
@@ -147,17 +155,17 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
         const context = new UtxoContext({ processor });
 
         await rpc.connect();
-        let { isSynced } = await rpc.getServerInfo();
+        const { isSynced } = await rpc.getServerInfo();
         if (!isSynced) {
             throw new Error("Node is not synchronized. Please try again later.");
         }
 
         await context.trackAddresses([fromAddress]);
 
-        const scriptBuilder = new ScriptBuilder();
-        scriptBuilder.addData(`krc20|transfer|${tokenSymbol}|${BigInt(amount)}|${toAddress}`);
-        const scriptAddress = addressFromScriptPublicKey(scriptBuilder.createPayToScriptHashScript(), "mainnet");
+        // Create the KRC20 script
+        const { script, scriptAddress } = createKRC20Script(fromAddress, toAddress, amount, tokenSymbol);
 
+        // Submit the commit transaction
         const generator = new Generator({
             entries: context,
             outputs: [{ address: scriptAddress, amount: 0n }],
@@ -165,14 +173,42 @@ async function sendKRC20Transaction(user_id, fromAddress, toAddress, amount, tok
             changeAddress: fromAddress,
         });
 
+        let commitTxId;
         let pending;
         while ((pending = await generator.next())) {
             await pending.sign([privateKey]);
-            const txid = await pending.submit(rpc);
-            console.log(JSON.stringify({ success: true, txid }));
+            commitTxId = await pending.submit(rpc);
+            console.log(`Commit transaction submitted with ID: ${commitTxId}`);
         }
 
-        console.log("Transaction Summary:", generator.summary());
+        // Wait for the commit transaction to be confirmed
+        console.log("Waiting for commit transaction to be confirmed...");
+        await processor.waitForTransaction(commitTxId);
+
+        // Submit the reveal transaction
+        const revealGenerator = new Generator({
+            entries: context,
+            outputs: [],
+            priorityFee: 1000n,
+            payload: script,
+            changeAddress: fromAddress,
+        });
+
+        let revealTxId;
+        while ((pending = await revealGenerator.next())) {
+            await pending.sign([privateKey]);
+            revealTxId = await pending.submit(rpc);
+            console.log(`Reveal transaction submitted with ID: ${revealTxId}`);
+        }
+
+        console.log(
+            JSON.stringify({
+                success: true,
+                commitTxId,
+                revealTxId,
+            })
+        );
+
         await processor.shutdown();
     } catch (err) {
         console.error(JSON.stringify({ success: false, error: err.message }));
