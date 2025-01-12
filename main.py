@@ -196,8 +196,8 @@ async def start_command(update, context):
                     mnemonic=wallet_data["mnemonic"]
                 )
                 await update.message.reply_text(
-                    "👻 *Welcome, brave spirit!*\n\n"
-                    "🎁 *You start with 3 daily free credits!* Use /topup to acquire more ethereal power.\n\n"
+                    "👻 Welcome, brave spirit!*\n\n"
+                    "🎁 You start with 3 daily free credits! Use /topup to acquire more ethereal power.\n\n"
                     "🌟 Let the adventure begin! Type /balance to check your credits.",
                     parse_mode="Markdown"
                 )
@@ -246,7 +246,7 @@ async def topup_command(update, context):
         f"🔑 Deposit Address: `{wallet_address}`\n"
         f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
         f"⏳ Remaining Time: 5:00\n\n"
-        "✅ After depositing, finalize the process by using the `/endtopup` command.",
+        "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00.",
         parse_mode="Markdown",
     )
 
@@ -275,7 +275,7 @@ async def topup_command(update, context):
                                   f"🔑 Deposit Address: `{wallet_address}`\n"
                                   f"💸 Current Rate: 1 Credit = {rate_per_credit:.2f} KASPER\n\n"
                                   f"{countdown_text}\n\n"
-                                  "✅ After depositing, finalize the process by using the `/endtopup` command."),
+                                  "✅ If deposit is recognized, end the process by using the /endtopup command.\n\n (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ Do /topup again if deposit not recognized within 5:00."),
                             parse_mode="Markdown",
                         )
                     except Exception as edit_error:
