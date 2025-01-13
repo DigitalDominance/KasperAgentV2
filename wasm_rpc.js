@@ -14,7 +14,7 @@ kaspa.initConsolePanicHook();
 /**
  * Create a wallet with mnemonic and derive keys and addresses.
  * @param {string | null} mnemonicPhrase - Optional mnemonic phrase for wallet restoration.
- * @returns {Object} Wallet information including mnemonic, keys, and addresses.
+ * @returns {Object | null} Wallet information including mnemonic, keys, and addresses.
  */
 const createWallet = async (mnemonicPhrase = null) => {
     try {
@@ -39,6 +39,7 @@ const createWallet = async (mnemonicPhrase = null) => {
         // Derive private key for the first receive address
         const firstReceivePrivKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
 
+        // Return wallet data
         return {
             mnemonic: mnemonic.toString(),
             walletAddress: walletAddress,
@@ -53,16 +54,21 @@ const createWallet = async (mnemonicPhrase = null) => {
     }
 };
 
-// If this file is executed directly, create and log a new wallet
+/**
+ * Main function for standalone execution
+ */
 if (require.main === module) {
     (async () => {
+        console.log("Creating a new wallet...");
         const wallet = await createWallet();
         if (wallet) {
-            console.log("Wallet created successfully:", JSON.stringify(wallet, null, 2));
+            console.log("Wallet created successfully:");
+            console.log(JSON.stringify(wallet, null, 2));
         } else {
             console.error("Failed to create wallet.");
         }
     })();
 }
 
+// Export the createWallet function for external use
 module.exports = { createWallet };
