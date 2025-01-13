@@ -135,34 +135,126 @@ async def generate_openai_response(user_text: str, persona: str) -> str:
             logger.error(f"Error in OpenAI API: {e}")
             return "I'm having trouble thinking... 😞"
 
+def create_wallet():
+    try:
+        # Use Node.js to run wasm_rpc.js and call createWallet
+        process = subprocess.Popen(
+            ["node", "wasm_rpc.js"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate()
+
+        if process.returncode == 0:
+            wallet_data = json.loads(stdout)
+            return wallet_data
+        else:
+            logger.error(f"Error creating wallet: {stderr.decode()}")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to create wallet: {e}")
+        return None
+
+# Fetch KRC-20 operations and filter relevant transactions
+async def fetch_krc20_operations(wallet_address: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(KRC20_API_URL)
+            response.raise_for_status()
+            data = response.json()
+            operations = data.get("result", [])
+
+            new_transactions = []
+            for op in operations:
+                if op["to"] == wallet_address and op["op"] == "TRANSFER":
+                    if op["txAccept"] == "true" and op["opAccept"] == "true":
+                        if not transactions_collection.find_one({"hashRev": op["hashRev"]}):
+                            amount = int(op["amt"]) / 1e8
+                            transaction = {
+                                "wallet": wallet_address,
+                                "hashRev": op["hashRev"],
+                                "amount": amount,
+                                "mtsAdd": op["mtsAdd"],
+                                "feeRev": int(op["feeRev"]) / 1e8,
+                            }
+                            transactions_collection.insert_one(transaction)
+                            new_transactions.append(transaction)
+
+            return new_transactions
+    except Exception as e:
+        logger.error(f"Error fetching KRC-20 operations: {e}")
+        return []
+
+# Calculate wallet balance
+async def get_wallet_balance(wallet_address: str):
+    try:
+        await fetch_krc20_operations(wallet_address)
+        transactions = transactions_collection.find({"wallet": wallet_address})
+        total_balance = sum(tx["amount"] for tx in transactions)
+        return total_balance
+    except Exception as e:
+        logger.error(f"Error calculating wallet balance: {e}")
+        return 0
+
 #######################################
-# Telegram Handlers
+# Telegram Command Handlers
 #######################################
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    users_collection.update_one({"_id": user_id}, {"$setOnInsert": {"credits": 0}}, upsert=True)
+
+    # Check if the user already has a wallet
+    user = users_collection.find_one({"_id": user_id})
+    if not user:
+        wallet = create_wallet()
+        if wallet:
+            users_collection.insert_one({
+                "_id": user_id,
+                "wallet_address": wallet["address"],
+                "mnemonic": wallet["mnemonic"],
+                "credits": 0,
+            })
+            await update.message.reply_text(f"👻 Wallet created! Your address: {wallet['address']}")
+        else:
+            await update.message.reply_text("❌ Failed to create a wallet. Please try again later.")
+            return
+    else:
+        await update.message.reply_text(f"👻 Welcome back! Your wallet: {user['wallet_address']}")
+
     USER_MESSAGE_LIMITS[user_id]["count"] = 0
     USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
-    await update.message.reply_text("👻 Welcome! KASPER is here to assist you!")
+    await update.message.reply_text("👻 KASPER is ready to assist you!")
 
-async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_text = update.message.text.strip()
-    if not user_text:
+    user = users_collection.find_one({"_id": user_id})
+
+    if not user:
+        await update.message.reply_text("❌ You need to start with /start to generate a wallet first.")
         return
-    limit_info = USER_MESSAGE_LIMITS[user_id]
-    current_time = datetime.utcnow()
-    if limit_info["count"] >= MAX_MESSAGES_PER_USER:
-        await update.message.reply_text("Message limit exceeded!")
+
+    wallet_address = user["wallet_address"]
+    new_transactions = await fetch_krc20_operations(wallet_address)
+    if new_transactions:
+        total_amount = sum(tx["amount"] for tx in new_transactions)
+        users_collection.update_one(
+            {"_id": user_id},
+            {"$inc": {"credits": int(total_amount * CREDIT_CONVERSION_RATE)}}
+        )
+        await update.message.reply_text(f"💰 Top-up complete! You received {total_amount} KASPER.")
+    else:
+        await update.message.reply_text("🔍 No new transactions found.")
+
+async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = users_collection.find_one({"_id": user_id})
+
+    if not user:
+        await update.message.reply_text("❌ You need to start with /start to generate a wallet first.")
         return
-    limit_info["count"] += 1
-    persona = "You're KASPER, the friendly ghost..."
-    response = await generate_openai_response(user_text, persona)
-    mp3_data = await elevenlabs_tts(response)
-    ogg_data = convert_mp3_to_ogg(mp3_data)
-    ogg_data.name = "voice.ogg"
-    await update.message.reply_voice(ogg_data)
-    await update.message.reply_text(response)
+
+    balance = await get_wallet_balance(user["wallet_address"])
+    await update.message.reply_text(f"🏦 Your wallet balance is {balance} KASPER.")
 
 #######################################
 # Main
@@ -170,8 +262,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main():
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("topup", topup_command))
+    application.add_handler(CommandHandler("endtopup", endtopup_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.run_polling()
 
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     main()
