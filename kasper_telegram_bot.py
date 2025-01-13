@@ -270,9 +270,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(f"💳 You have {remaining_credits} credits remaining.")
     
 def create_wallet():
+    """
+    Generates a wallet by invoking the wasm_rpc.js Node.js script and parses its output.
+    """
     try:
         process = subprocess.Popen(
-            ["node", "wasm_rpc.js"],
+            ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the same directory
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -280,12 +283,25 @@ def create_wallet():
 
         if process.returncode == 0:
             try:
-                wallet_data = json.loads(stdout.decode("utf-8").strip())
-                logger.info(f"Wallet successfully created: {wallet_data}")
-                return wallet_data
+                # Decode JSON output
+                raw_output = stdout.decode("utf-8").strip()
+                wallet_data = json.loads(raw_output)
+
+                # Parse the relevant fields from the wallet_data
+                formatted_wallet = {
+                    "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
+                    "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
+                    "xPrv": wallet_data["xPrv"],
+                    "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
+                    "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
+                    "privateKey": wallet_data["privateKey"],
+                }
+
+                logger.info(f"Wallet successfully created: {formatted_wallet}")
+                return formatted_wallet
             except json.JSONDecodeError as json_err:
                 logger.error(f"Error decoding JSON from Node.js script: {json_err}")
-                logger.debug(f"Raw output: {stdout.decode('utf-8').strip()}")
+                logger.debug(f"Raw output: {raw_output}")
                 return None
         else:
             error_output = stderr.decode("utf-8").strip()
@@ -294,6 +310,7 @@ def create_wallet():
     except Exception as e:
         logger.error(f"Failed to create wallet: {e}")
         return None
+
 
 
 
