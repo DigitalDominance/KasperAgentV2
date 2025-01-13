@@ -271,53 +271,49 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     
 def create_wallet():
     """
-    Generates a wallet by invoking the wasm_rpc.js Node.js script.
+    Generates a wallet by invoking the wasm_rpc.js Node.js script and parses its output synchronously.
     """
     try:
-        # Run the Node.js script
-        process = subprocess.run(
-            ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the correct path
-            capture_output=True,
-            text=True  # Text mode to decode stdout as a string
+        # Run the Node.js script and capture its output
+        result = subprocess.run(
+            ["node", "wasm_rpc.js"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,  # Ensures output is decoded into a string automatically
         )
 
-        # Capture the outputs
-        raw_stdout = process.stdout.strip()
-        raw_stderr = process.stderr.strip()
+        # Debugging raw outputs
+        logger.debug(f"Node.js stdout: {result.stdout.strip()}")
+        logger.debug(f"Node.js stderr: {result.stderr.strip()}")
 
-        logger.debug(f"Node.js stdout: {raw_stdout}")
-        logger.debug(f"Node.js stderr: {raw_stderr}")
-
-        # Check for errors
-        if process.returncode != 0:
-            logger.error(f"Node.js script failed: {raw_stderr}")
+        if result.returncode != 0:
+            logger.error(f"Node.js script failed with error: {result.stderr.strip()}")
             return None
 
-        # Parse JSON response
-        if raw_stdout:
-            wallet_data = json.loads(raw_stdout)
-            formatted_wallet = {
-                "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
-                "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
-                "xPrv": wallet_data["xPrv"],
-                "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
-                "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
-                "privateKey": wallet_data["privateKey"],
-            }
-            logger.info(f"Wallet successfully created: {formatted_wallet}")
-            return formatted_wallet
+        # Parse and format the JSON output
+        raw_output = result.stdout.strip()
+        if raw_output:
+            try:
+                wallet_data = json.loads(raw_output)
+                formatted_wallet = {
+                    "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
+                    "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
+                    "xPrv": wallet_data["xPrv"],
+                    "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
+                    "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
+                    "privateKey": wallet_data["privateKey"],
+                }
+                logger.info(f"Wallet successfully created: {formatted_wallet}")
+                return formatted_wallet
+            except json.JSONDecodeError as json_err:
+                logger.error(f"JSON decoding error: {json_err}")
+                logger.debug(f"Raw JSON: {raw_output}")
+                return None
         else:
             logger.error("Node.js script returned empty output.")
             return None
-
-    except json.JSONDecodeError as json_err:
-        logger.error(f"JSON decoding error: {json_err}")
-        return None
-    except FileNotFoundError:
-        logger.error("Node.js is not installed or `wasm_rpc.js` is not in the expected path.")
-        return None
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Failed to create wallet: {e}")
         return None
 
 #######################################
@@ -331,8 +327,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = users_collection.find_one({"_id": user_id})
 
     if not user:
-        # Await the async create_wallet function
-        wallet = await create_wallet()  
+        wallet = create_wallet()  # Synchronous call to `create_wallet`
         if wallet:
             users_collection.insert_one({
                 "_id": user_id,
@@ -356,6 +351,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_MESSAGE_LIMITS[user_id]["count"] = 0
     USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
     await update.message.reply_text("👻 KASPER is ready to assist you!")
+
 
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
