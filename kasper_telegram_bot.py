@@ -272,8 +272,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 def create_wallet():
     """
     Generates a wallet by invoking the wasm_rpc.js Node.js script.
+
+    This function assumes that wasm_rpc.js is properly configured to generate wallet details
+    including mnemonic, walletAddress, xPrv, and related keys, and outputs them as JSON.
     """
     try:
+        # Execute the Node.js script
         process = subprocess.Popen(
             ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the same directory
             stdout=subprocess.PIPE,
@@ -282,14 +286,29 @@ def create_wallet():
         stdout, stderr = process.communicate()
 
         if process.returncode == 0:
-            wallet_data = json.loads(stdout.decode("utf-8"))
-            return wallet_data
+            # Parse JSON output from the script
+            try:
+                wallet_data = json.loads(stdout.decode("utf-8").strip())
+                logger.info(f"Wallet successfully created: {wallet_data}")
+                return wallet_data
+            except json.JSONDecodeError as json_err:
+                logger.error(f"Error decoding JSON from Node.js script: {json_err}")
+                logger.debug(f"Raw output: {stdout.decode('utf-8').strip()}")
+                return None
         else:
-            logger.error(f"Error creating wallet: {stderr.decode('utf-8')}")
+            # Log stderr from the Node.js process
+            error_output = stderr.decode("utf-8").strip()
+            logger.error(f"Node.js script error: {error_output}")
             return None
+    except FileNotFoundError as fnf_error:
+        # Handle case where Node.js or wasm_rpc.js is missing
+        logger.error(f"Node.js or wasm_rpc.js not found: {fnf_error}")
+        return None
     except Exception as e:
+        # Handle general exceptions
         logger.error(f"Failed to create wallet: {e}")
         return None
+
 
 #######################################
 # Telegram Command Handlers
