@@ -1,43 +1,16 @@
 {
-  "name": "kasper-agent",
+  "name": "kasper-telegram-bot",
   "version": "1.0.0",
-  "description": "Node.js integration for Kasper blockchain using WASM and Telegram bot backend.",
-  "main": "node_wasm_handler.js",
-
+  "description": "A Telegram bot using Kaspa WASM for wallet integration",
+  "main": "wasm_rpc.js",
   "scripts": {
-    "start": "node node_wasm_handler.js",
-    "test": "echo \"No tests defined\""
+    "start": "node wasm_rpc.js"
   },
   "dependencies": {
     "kaspa-wasm": "0.13.0",
-    "events": "^3.3.0",
-    "mongodb": "^5.0.0",
-    "express": "^4.18.2",
-    "express-rate-limit": "^6.7.0",
-    "body-parser": "^1.20.2",
-    "websocket": "^1.0.34",
-    "helmet": "^6.0.1",
-    "isomorphic-ws": "^5.0.0"
+    "websocket": "^1.0.34"
   },
-  "devDependencies": {},
   "engines": {
-    "node": "18.x"
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/yourname/kasper-agent"
-  },
-  "keywords": [
-    "kasper",
-    "blockchain",
-    "telegram",
-    "wasm",
-    "nodejs"
-  ],
-  "author": "Your Name",
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/yourname/kasper-agent/issues"
-  },
-  "homepage": "https://github.com/yourname/kasper-agent#readme"
+    "node": ">=16.x"
+  }
 }

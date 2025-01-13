@@ -1,1 +1,1 @@
-web: node node_wasm_handler.js
+worker: python kasper_telegram_bot.py
