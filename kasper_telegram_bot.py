@@ -137,27 +137,6 @@ async def generate_openai_response(user_text: str, persona: str) -> str:
             logger.error(f"Error in OpenAI API: {e}")
             return "I'm having trouble thinking... 😞"
 
-#######################################
-# Wallet Management
-#######################################
-def create_wallet():
-    try:
-        process = subprocess.Popen(
-            ["node", "wasm_rpc.js"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        stdout, stderr = process.communicate()
-
-        if process.returncode == 0:
-            return json.loads(stdout)
-        else:
-            logger.error(f"Error creating wallet: {stderr.decode()}")
-            return None
-    except Exception as e:
-        logger.error(f"Failed to create wallet: {e}")
-        return None
-
 async def fetch_krc20_operations(wallet_address: str):
     try:
         async with httpx.AsyncClient() as client:
@@ -289,7 +268,36 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Notify user of remaining credits
     remaining_credits = users_collection.find_one({"_id": user_id})["credits"]
     await update.message.reply_text(f"💳 You have {remaining_credits} credits remaining.")
+    
+def create_wallet():
+    """
+    Generates a wallet by invoking the wasm_rpc.js Node.js script.
+    """
+    try:
+        process = subprocess.Popen(
+            ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the same directory
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        stdout, stderr = process.communicate()
+
+        if process.returncode == 0:
+            wallet_data = json.loads(stdout.decode("utf-8"))
+            return wallet_data
+        else:
+            logger.error(f"Error creating wallet: {stderr.decode('utf-8')}")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to create wallet: {e}")
+        return None
+
+#######################################
+# Telegram Command Handlers
+#######################################
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /start command to initialize a user's wallet and profile.
+    """
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
 
@@ -298,11 +306,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if wallet:
             users_collection.insert_one({
                 "_id": user_id,
-                "wallet_address": wallet["address"],
+                "wallet_address": wallet["walletAddress"],
                 "mnemonic": wallet["mnemonic"],
+                "xPrv": wallet["xPrv"],  # Store the xPrv for recovery if needed
                 "credits": 0,
             })
-            await update.message.reply_text(f"👻 Wallet created! Your address: {wallet['address']}")
+            await update.message.reply_text(
+                f"👻 Wallet successfully created!\n\n"
+                f"**Address:** `{wallet['walletAddress']}`\n"
+                f"**Mnemonic:** `{wallet['mnemonic']}`\n\n"
+                f"💾 Save your mnemonic securely!"
+            )
         else:
             await update.message.reply_text("❌ Failed to create a wallet. Please try again later.")
             return
@@ -314,6 +328,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👻 KASPER is ready to assist you!")
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /topup command to check for new KRC20 transactions and credit the user's account.
+    """
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
 
@@ -334,6 +351,9 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔍 No new transactions found.")
 
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /endtopup command to check the user's wallet balance.
+    """
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
 
@@ -355,7 +375,5 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     application.run_polling()
 
-if __name__ == "__main__":
-    main()
 if __name__ == "__main__":
     main()
