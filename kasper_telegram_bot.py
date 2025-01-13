@@ -199,6 +199,96 @@ async def get_wallet_balance(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles incoming text messages:
+    - Checks rate limits and cooldowns.
+    - Deducts credits for processing.
+    - Generates AI responses and sends voice messages.
+    """
+    user_id = update.effective_user.id
+    user_text = update.message.text.strip()
+    current_time = datetime.utcnow()
+
+    # Fetch user details
+    user = users_collection.find_one({"_id": user_id})
+    if not user:
+        await update.message.reply_text("❌ You need to use /start to initialize your account.")
+        return
+
+    # Enforce rate limit
+    rate_info = USER_MESSAGE_LIMITS[user_id]
+    if current_time >= rate_info["reset_time"]:
+        rate_info["count"] = 0
+        rate_info["reset_time"] = current_time + timedelta(hours=24)
+        rate_info["last_message_time"] = None
+
+    if rate_info["count"] >= MAX_MESSAGES_PER_USER:
+        await update.message.reply_text(
+            f"⛔ You have reached your daily limit of {MAX_MESSAGES_PER_USER} messages. Please try again tomorrow."
+        )
+        return
+
+    # Enforce cooldown
+    if rate_info["last_message_time"]:
+        elapsed_time = (current_time - rate_info["last_message_time"]).total_seconds()
+        if elapsed_time < COOLDOWN_SECONDS:
+            remaining_time = int(COOLDOWN_SECONDS - elapsed_time)
+            await update.message.reply_text(
+                f"⏳ Please wait {remaining_time} more seconds before sending another message."
+            )
+            return
+
+    # Check if user has enough credits
+    if user["credits"] <= 0:
+        await update.message.reply_text(
+            "❌ You don't have enough credits to send a message. Please use /topup to add credits."
+        )
+        return
+
+    # Deduct credits for this message
+    users_collection.update_one({"_id": user_id}, {"$inc": {"credits": -1}})
+    rate_info["count"] += 1
+    rate_info["last_message_time"] = current_time
+
+    try:
+        # Notify user that the bot is processing
+        processing_msg = await update.message.reply_text("👻 **KASPER is processing your request...** 👻", parse_mode="Markdown")
+
+        # Generate AI response
+        persona = context.user_data.get(
+            "persona",
+            "You are KASPER, a friendly ghost here to chat and help with Kasper-related questions."
+        )
+        ai_response = await generate_openai_response(user_text, persona)
+
+        if not ai_response:
+            ai_response = "I'm struggling to think of a response... (Ghostly shrug) 🤷‍♂️"
+
+        # Convert AI response to voice using ElevenLabs
+        mp3_data = await elevenlabs_tts(ai_response)
+        if not mp3_data:
+            await processing_msg.edit_text("❌ I couldn't generate an audio response.")
+            return
+
+        ogg_data = convert_mp3_to_ogg(mp3_data)
+        ogg_data.name = "voice.ogg"  # Required for Telegram
+
+        # Send voice and text response
+        await update.message.reply_voice(voice=ogg_data)
+        await update.message.reply_text(ai_response)
+
+        # Update processing message
+        await processing_msg.delete()
+
+    except Exception as e:
+        logger.error(f"Error in handle_text_message: {e}")
+        logger.debug(traceback.format_exc())
+        await update.message.reply_text("❌ An error occurred while processing your request.")
+
+    # Notify user of remaining credits
+    remaining_credits = users_collection.find_one({"_id": user_id})["credits"]
+    await update.message.reply_text(f"💳 You have {remaining_credits} credits remaining.")
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
