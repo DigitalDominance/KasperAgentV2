@@ -269,48 +269,55 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     remaining_credits = users_collection.find_one({"_id": user_id})["credits"]
     await update.message.reply_text(f"💳 You have {remaining_credits} credits remaining.")
     
-async def create_wallet():
+def create_wallet():
     """
-    Generates a wallet by invoking the wasm_rpc.js Node.js script and parses its output.
+    Generates a wallet by invoking the wasm_rpc.js Node.js script.
     """
     try:
-        process = await asyncio.create_subprocess_shell(
-            "node wasm_rpc.js",  # Ensure `wasm_rpc.js` path is correct
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        # Run the Node.js script
+        process = subprocess.run(
+            ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the correct path
+            capture_output=True,
+            text=True  # Text mode to decode stdout as a string
         )
-        stdout, stderr = await process.communicate()
 
-        # Debug raw outputs
-        raw_stdout = stdout.decode("utf-8").strip()
-        raw_stderr = stderr.decode("utf-8").strip()
+        # Capture the outputs
+        raw_stdout = process.stdout.strip()
+        raw_stderr = process.stderr.strip()
 
         logger.debug(f"Node.js stdout: {raw_stdout}")
         logger.debug(f"Node.js stderr: {raw_stderr}")
 
-        if process.returncode == 0:
-            try:
-                # Decode JSON output
-                wallet_data = json.loads(raw_stdout)
-                formatted_wallet = {
-                    "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
-                    "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
-                    "xPrv": wallet_data["xPrv"],
-                    "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
-                    "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
-                    "privateKey": wallet_data["privateKey"],
-                }
-                logger.info(f"Wallet successfully created: {formatted_wallet}")
-                return formatted_wallet
-            except json.JSONDecodeError as json_err:
-                logger.error(f"JSON decoding error: {json_err}")
-                logger.debug(f"Raw JSON: {raw_stdout}")
-                return None
-        else:
-            logger.error(f"Node.js script failed with error: {raw_stderr}")
+        # Check for errors
+        if process.returncode != 0:
+            logger.error(f"Node.js script failed: {raw_stderr}")
             return None
+
+        # Parse JSON response
+        if raw_stdout:
+            wallet_data = json.loads(raw_stdout)
+            formatted_wallet = {
+                "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
+                "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
+                "xPrv": wallet_data["xPrv"],
+                "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
+                "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
+                "privateKey": wallet_data["privateKey"],
+            }
+            logger.info(f"Wallet successfully created: {formatted_wallet}")
+            return formatted_wallet
+        else:
+            logger.error("Node.js script returned empty output.")
+            return None
+
+    except json.JSONDecodeError as json_err:
+        logger.error(f"JSON decoding error: {json_err}")
+        return None
+    except FileNotFoundError:
+        logger.error("Node.js is not installed or `wasm_rpc.js` is not in the expected path.")
+        return None
     except Exception as e:
-        logger.error(f"Failed to create wallet: {e}")
+        logger.error(f"Unexpected error: {e}")
         return None
 
 #######################################
