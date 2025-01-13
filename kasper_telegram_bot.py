@@ -325,7 +325,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = users_collection.find_one({"_id": user_id})
 
     if not user:
-        wallet = create_wallet()  # Synchronous call to `create_wallet`
+        # Await the create_wallet function to retrieve the result
+        wallet = await create_wallet()
         if wallet:
             users_collection.insert_one({
                 "_id": user_id,
@@ -349,6 +350,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_MESSAGE_LIMITS[user_id]["count"] = 0
     USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
     await update.message.reply_text("👻 KASPER is ready to assist you!")
+
 
 
 
