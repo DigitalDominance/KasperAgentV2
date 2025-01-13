@@ -31,7 +31,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 MONGO_URI = os.getenv("MONGO_URI", "")
-
+KRC20_API_URL = "https://api.kasplex.org/v1/krc20/oplist"
 
 MAX_MESSAGES_PER_USER = int(os.getenv("MAX_MESSAGES_PER_USER", "20"))
 COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS", "15"))
@@ -42,7 +42,7 @@ CREDIT_CONVERSION_RATE = 200  # 1 credit = 200 KASPER
 #######################################
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
@@ -50,17 +50,17 @@ logger = logging.getLogger(__name__)
 # Database Setup
 #######################################
 client = MongoClient(MONGO_URI)
-db = client['kasper_bot']
-users_collection = db['users']
-transactions_collection = db['transactions']
+db = client["kasper_bot"]
+users_collection = db["users"]
+transactions_collection = db["transactions"]
 
 #######################################
-# Rate Limit: 20 messages / 24h
+# Rate Limits
 #######################################
 USER_MESSAGE_LIMITS = defaultdict(lambda: {
     "count": 0,
     "reset_time": datetime.utcnow() + timedelta(hours=24),
-    "last_message_time": None
+    "last_message_time": None,
 })
 
 #######################################
@@ -78,6 +78,9 @@ def check_ffmpeg():
 # Convert MP3 -> OGG
 #######################################
 def convert_mp3_to_ogg(mp3_data: bytes) -> BytesIO:
+    """
+    Convert MP3 bytes to OGG (Opus) format for Telegram voice notes.
+    """
     try:
         mp3_file = BytesIO(mp3_data)
         segment = AudioSegment.from_file(mp3_file, format="mp3")
@@ -116,28 +119,29 @@ async def elevenlabs_tts(text: str) -> bytes:
             return b""
 
 #######################################
-# OpenAI Chat Completion
+# OpenAI Messaging
 #######################################
 async def generate_openai_response(user_text: str, persona: str) -> str:
     headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "gpt-4",
         "messages": [{"role": "system", "content": persona}, {"role": "user", "content": user_text}],
-        "temperature": 0.8
+        "temperature": 0.8,
     }
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
             response.raise_for_status()
-            data = response.json()
-            return data['choices'][0]['message']['content']
+            return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
             logger.error(f"Error in OpenAI API: {e}")
             return "I'm having trouble thinking... 😞"
 
+#######################################
+# Wallet Management
+#######################################
 def create_wallet():
     try:
-        # Use Node.js to run wasm_rpc.js and call createWallet
         process = subprocess.Popen(
             ["node", "wasm_rpc.js"],
             stdout=subprocess.PIPE,
@@ -146,8 +150,7 @@ def create_wallet():
         stdout, stderr = process.communicate()
 
         if process.returncode == 0:
-            wallet_data = json.loads(stdout)
-            return wallet_data
+            return json.loads(stdout)
         else:
             logger.error(f"Error creating wallet: {stderr.decode()}")
             return None
@@ -155,7 +158,6 @@ def create_wallet():
         logger.error(f"Failed to create wallet: {e}")
         return None
 
-# Fetch KRC-20 operations and filter relevant transactions
 async def fetch_krc20_operations(wallet_address: str):
     try:
         async with httpx.AsyncClient() as client:
@@ -185,13 +187,11 @@ async def fetch_krc20_operations(wallet_address: str):
         logger.error(f"Error fetching KRC-20 operations: {e}")
         return []
 
-# Calculate wallet balance
 async def get_wallet_balance(wallet_address: str):
     try:
         await fetch_krc20_operations(wallet_address)
         transactions = transactions_collection.find({"wallet": wallet_address})
-        total_balance = sum(tx["amount"] for tx in transactions)
-        return total_balance
+        return sum(tx["amount"] for tx in transactions)
     except Exception as e:
         logger.error(f"Error calculating wallet balance: {e}")
         return 0
@@ -199,12 +199,10 @@ async def get_wallet_balance(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
-    # Check if the user already has a wallet
     user = users_collection.find_one({"_id": user_id})
+
     if not user:
         wallet = create_wallet()
         if wallet:
