@@ -269,46 +269,43 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     remaining_credits = users_collection.find_one({"_id": user_id})["credits"]
     await update.message.reply_text(f"💳 You have {remaining_credits} credits remaining.")
     
-def create_wallet():
+async def create_wallet():
     """
-    Generates a wallet by invoking the wasm_rpc.js Node.js script and parses its output.
+    Asynchronously creates a wallet by invoking the wasm_rpc.js Node.js script
+    and parsing its output.
     """
     try:
-        process = subprocess.Popen(
-            "node wasm_rpc.js", 
-            shell=True,# Ensure `wasm_rpc.js` path is correct
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+        # Run the Node.js script asynchronously
+        process = await asyncio.create_subprocess_exec(
+            "node", "wasm_rpc.js",   # Ensure the script is in the correct path
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            text=True                # Automatically decode output to strings
         )
-        stdout, stderr = process.communicate()
 
-        # Debug raw outputs
-        raw_stdout = stdout.decode("utf-8").strip()
-        raw_stderr = stderr.decode("utf-8").strip()
-
-        logger.debug(f"Node.js stdout: {raw_stdout}")
-        logger.debug(f"Node.js stderr: {raw_stderr}")
+        # Capture the stdout and stderr
+        stdout, stderr = await process.communicate()
 
         if process.returncode == 0:
             try:
-                # Decode JSON output
-                wallet_data = json.loads(raw_stdout)
+                # Parse the JSON output from the script
+                wallet_data = json.loads(stdout.strip())
                 formatted_wallet = {
                     "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
-                    "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
+                    "walletAddress": f"{wallet_data['walletAddress']['prefix']}:{wallet_data['walletAddress']['payload']}",
                     "xPrv": wallet_data["xPrv"],
-                    "firstChangeAddress": wallet_data["firstChangeAddress"]["prefix"] + ":" + wallet_data["firstChangeAddress"]["payload"],
-                    "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
+                    "firstChangeAddress": f"{wallet_data['firstChangeAddress']['prefix']}:{wallet_data['firstChangeAddress']['payload']}",
+                    "secondReceiveAddress": f"{wallet_data['secondReceiveAddress']['prefix']}:{wallet_data['secondReceiveAddress']['payload']}",
                     "privateKey": wallet_data["privateKey"],
                 }
                 logger.info(f"Wallet successfully created: {formatted_wallet}")
                 return formatted_wallet
-            except json.JSONDecodeError as json_err:
-                logger.error(f"JSON decoding error: {json_err}")
-                logger.debug(f"Raw JSON: {raw_stdout}")
+            except (json.JSONDecodeError, KeyError) as parse_error:
+                logger.error(f"Error parsing wallet data: {parse_error}")
+                logger.debug(f"Raw JSON: {stdout.strip()}")
                 return None
         else:
-            logger.error(f"Node.js script failed with error: {raw_stderr}")
+            logger.error(f"Node.js script failed with error: {stderr.strip()}")
             return None
     except Exception as e:
         logger.error(f"Failed to create wallet: {e}")
