@@ -31,7 +31,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY", "")
 ELEVEN_LABS_VOICE_ID = os.getenv("ELEVEN_LABS_VOICE_ID", "0whGLe6wyQ2fwT9M40ZY")
 MONGO_URI = os.getenv("MONGO_URI", "")
-KASPA_RPC_URL = os.getenv("KASPA_RPC_URL", "ws://localhost:16110")
+
 
 MAX_MESSAGES_PER_USER = int(os.getenv("MAX_MESSAGES_PER_USER", "20"))
 COOLDOWN_SECONDS = int(os.getenv("COOLDOWN_SECONDS", "15"))
