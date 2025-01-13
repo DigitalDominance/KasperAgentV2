@@ -316,16 +316,13 @@ async def create_wallet():
 #######################################
 # Telegram Command Handlers
 #######################################
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /start command to initialize a user's wallet and profile.
-    """
+async def start_command(update, context):
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
 
     if not user:
-        # Await the create_wallet function to retrieve the result
-        wallet = await create_wallet()
+        # Directly call the function, no need for `await` since it's no longer asynchronous
+        wallet = create_wallet()
         if wallet:
             users_collection.insert_one({
                 "_id": user_id,
@@ -349,6 +346,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_MESSAGE_LIMITS[user_id]["count"] = 0
     USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
     await update.message.reply_text("👻 KASPER is ready to assist you!")
+
 
 
 
