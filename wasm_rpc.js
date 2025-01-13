@@ -1,89 +1,68 @@
+// @ts-ignore
+globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket shim
 const kaspa = require('./wasm/kaspa');
 const {
     Mnemonic,
     XPrv,
+    DerivationPath,
+    PublicKey,
     NetworkType,
-    Resolver,
-    RpcClient
 } = kaspa;
 
-const initKaspa = async () => {
-    try {
-        kaspa.initConsolePanicHook();
-        const resolver = new Resolver();
-        const rpc = new RpcClient({ resolver, networkId: 'mainnet' });
+kaspa.initConsolePanicHook();
 
-        await rpc.connect();
-        console.log("Connected to Kaspa Mainnet RPC:", rpc.url);
-
-        return rpc;
-    } catch (error) {
-        console.error("Error initializing Kaspa RPC:", error.message);
-        throw error;
-    }
-};
-
+/**
+ * Create a wallet with mnemonic and derive keys and addresses.
+ * @param {string | null} mnemonicPhrase - Optional mnemonic phrase for wallet restoration.
+ * @returns {Object} Wallet information including mnemonic, keys, and addresses.
+ */
 const createWallet = async (mnemonicPhrase = null) => {
     try {
-        // Initialize RPC
-        const rpc = await initKaspa();
+        // Generate or use the provided mnemonic
+        const mnemonic = mnemonicPhrase ? new Mnemonic(mnemonicPhrase) : Mnemonic.random();
+        console.log("Generated mnemonic:", mnemonic.toString());
 
-        // Use provided mnemonic or generate a new one
-        const mnemonic = mnemonicPhrase
-            ? new Mnemonic(mnemonicPhrase)
-            : Mnemonic.random();
-        console.log("Mnemonic:", mnemonic.toString());
-
-        // Generate seed from mnemonic
+        // Derive seed and master private key
         const seed = mnemonic.toSeed();
-        console.log("Seed:", seed.toString('hex'));
-
-        // Generate extended private key (xPrv)
         const xPrv = new XPrv(seed);
 
-        // Derive receiving address (m/44'/111111'/0'/0/0)
+        // Derive main receive address (m/44'/111111'/0'/0/0)
         const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-        const receiveWallet = receiveWalletXPub.deriveChild(0, false).toPublicKey();
-        const walletAddress = receiveWallet.toAddress(NetworkType.Mainnet);
+        const receiveAddressPubKey = receiveWalletXPub.deriveChild(0, false).toPublicKey();
+        const walletAddress = receiveAddressPubKey.toAddress(NetworkType.Mainnet);
 
-        console.log("Wallet Address:", walletAddress);
-
-        // Derive change address (m/44'/111111'/0'/1/0)
+        // Additional derivations for debugging or extended use
+        const secondReceivePubKey = receiveWalletXPub.deriveChild(1, false).toPublicKey();
         const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
-        const changeWallet = changeWalletXPub.deriveChild(0, false).toPublicKey();
-        const changeAddress = changeWallet.toAddress(NetworkType.Mainnet);
+        const firstChangeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
 
-        console.log("Change Address:", changeAddress);
+        // Derive private key for the first receive address
+        const firstReceivePrivKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
 
-        // Close RPC connection
-        await rpc.disconnect();
-        console.log("Disconnected from Kaspa Mainnet RPC.");
-
-        // Return wallet details
         return {
             mnemonic: mnemonic.toString(),
-            seed: seed.toString('hex'),
-            xPrv: xPrv.intoString("ktrv"),
-            xPub: xPrv.toXPub().intoString("xpub"),
-            publicKey: xPrv.toXPub().toPublicKey().toString(),
             walletAddress: walletAddress,
-            changeAddress: changeAddress,
+            xPrv: xPrv.intoString("ktrv"),
+            firstChangeAddress: firstChangeAddress,
+            secondReceiveAddress: secondReceivePubKey.toAddress(NetworkType.Mainnet),
+            privateKey: firstReceivePrivKey.toString(),
         };
     } catch (error) {
-        console.error("Error creating wallet:", error.message);
-        throw error;
+        console.error("Error creating wallet:", error);
+        return null;
     }
 };
 
-// Example Usage
-(async () => {
-    try {
+// If this file is executed directly, create and log a new wallet
+if (require.main === module) {
+    (async () => {
         const wallet = await createWallet();
-        console.log("Wallet Generated Successfully:");
-        console.log(JSON.stringify(wallet, null, 2));
-    } catch (error) {
-        console.error("Failed to create wallet:", error.message);
-    }
-})();
+        if (wallet) {
+            console.log("Wallet created successfully:", JSON.stringify(wallet, null, 2));
+        } else {
+            console.error("Failed to create wallet.");
+        }
+    })();
+}
 
-module.exports = { initKaspa, createWallet };
+module.exports = { createWallet };
