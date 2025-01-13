@@ -275,19 +275,24 @@ def create_wallet():
     """
     try:
         process = subprocess.Popen(
-            ["node", "wasm_rpc.js"],  # Ensure `wasm_rpc.js` is in the same directory
+            "node wasm_rpc.js", 
+            shell=True,# Ensure `wasm_rpc.js` path is correct
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
         stdout, stderr = process.communicate()
 
+        # Debug raw outputs
+        raw_stdout = stdout.decode("utf-8").strip()
+        raw_stderr = stderr.decode("utf-8").strip()
+
+        logger.debug(f"Node.js stdout: {raw_stdout}")
+        logger.debug(f"Node.js stderr: {raw_stderr}")
+
         if process.returncode == 0:
             try:
                 # Decode JSON output
-                raw_output = stdout.decode("utf-8").strip()
-                wallet_data = json.loads(raw_output)
-
-                # Parse the relevant fields from the wallet_data
+                wallet_data = json.loads(raw_stdout)
                 formatted_wallet = {
                     "mnemonic": json.loads(wallet_data["mnemonic"])["phrase"],
                     "walletAddress": wallet_data["walletAddress"]["prefix"] + ":" + wallet_data["walletAddress"]["payload"],
@@ -296,20 +301,19 @@ def create_wallet():
                     "secondReceiveAddress": wallet_data["secondReceiveAddress"]["prefix"] + ":" + wallet_data["secondReceiveAddress"]["payload"],
                     "privateKey": wallet_data["privateKey"],
                 }
-
                 logger.info(f"Wallet successfully created: {formatted_wallet}")
                 return formatted_wallet
             except json.JSONDecodeError as json_err:
-                logger.error(f"Error decoding JSON from Node.js script: {json_err}")
-                logger.debug(f"Raw output: {raw_output}")
+                logger.error(f"JSON decoding error: {json_err}")
+                logger.debug(f"Raw JSON: {raw_stdout}")
                 return None
         else:
-            error_output = stderr.decode("utf-8").strip()
-            logger.error(f"Node.js script error: {error_output}")
+            logger.error(f"Node.js script failed with error: {raw_stderr}")
             return None
     except Exception as e:
         logger.error(f"Failed to create wallet: {e}")
         return None
+
 
 
 
