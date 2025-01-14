@@ -34,14 +34,16 @@ class DBManager:
         }
         self.users.insert_one(user)
 
-    def update_credits(self, telegram_id, credits):
-        """
-        Update the user's credits by adding the specified amount.
+    def transaction_exists(self, hashRev: str) -> bool:
+        """Check if a transaction already exists in the database."""
+        return self.transactions.find_one({"hashRev": hashRev}) is not None
 
-        Args:
-            telegram_id (int): Telegram user ID.
-            credits (int): Number of credits to add (can be negative).
-        """
+    def add_transaction(self, transaction: dict):
+        """Add a new transaction to the database."""
+        self.transactions.insert_one(transaction)
+
+    def update_credits(self, telegram_id: int, credits: int):
+        """Update the user's credit balance."""
         self.users.update_one({"telegram_id": telegram_id}, {"$inc": {"credits": credits}})
 
     def get_credits(self, telegram_id):
