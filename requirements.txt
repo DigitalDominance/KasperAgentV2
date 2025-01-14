@@ -7,3 +7,5 @@ websockets==11.0.3
 openai
 httpx==0.24.0
 pymongo==4.4.1
+pytest==7.4.2 
+python-dotenv==1.0.0 
