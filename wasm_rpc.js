@@ -7,131 +7,96 @@ const nodeUtil = require('node:util');
 const { parseArgs: nodeParseArgs } = nodeUtil;
 
 const {
+    Resolver,
+    Encoding,
+    RpcClient,
     Mnemonic,
     XPrv,
     DerivationPath,
     NetworkType,
-    Address,
-    Encoding,
 } = kaspa;
 
 kaspa.initConsolePanicHook();
 
-/**
- * Helper function to parse command line arguments for running the script.
- * @param {Object} options - Additional options for argument parsing.
- * @returns {Object} Parsed arguments including address, networkId, and encoding.
- */
-function parseArgs(options = { additionalParseArgs: {}, additionalHelpOutput: '' }) {
-    const script = path.basename(process.argv[1]);
-    const args = process.argv.slice(2);
+const {
+    encoding,
+} = parseArgs();
 
-    const { values, positionals, tokens } = nodeParseArgs({
-        args,
-        options: {
-            ...options.additionalParseArgs,
-            help: { type: 'boolean' },
-            json: { type: 'boolean' },
-            address: { type: 'string' },
-            network: { type: 'string' },
-            encoding: { type: 'string' },
-        },
-        tokens: true,
-        allowPositionals: true,
-    });
-
-    if (values.help) {
-        console.log(`Usage: node ${script} create|restore [options]
-Options:
-  --address <address>         Specify wallet address.
-  --network <mainnet|testnet> Specify the network type.
-  --encoding <borsh|json>     Specify encoding type. ${options.additionalHelpOutput}`);
-        process.exit(0);
-    }
-
-    const addressRegex = /(kaspa|kaspatest):\S+/i;
-    const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
-    const address = addressArg === null ? null : new Address(addressArg);
-
-    const networkArg = values.network ?? 'mainnet';
-    const networkId = new NetworkType(networkArg);
-
-    const encodingArg = values.encoding ?? 'borsh';
-    const encoding = encodingArg === 'json' ? Encoding.SerdeJson : Encoding.Borsh;
-
-    return { address, networkId, encoding, tokens };
-}
-
-/**
- * Derive wallet details from an XPrv key.
- * @param {XPrv} xPrv - Extended private key.
- * @param {NetworkType} networkType - Network type (Mainnet or Testnet).
- * @returns {Object} Wallet details including addresses and keys.
- */
-const deriveWalletData = (xPrv, networkType) => {
-    const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-    const receiveAddressPubKey = receiveWalletXPub.deriveChild(0, false).toPublicKey();
-    const walletAddress = receiveAddressPubKey.toAddress(networkType);
-
-    const secondReceiveAddress = receiveWalletXPub.deriveChild(1, false).toPublicKey().toAddress(networkType);
-
-    const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
-    const firstChangeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(networkType);
-
-    const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
-
-    return {
-        mnemonic: xPrv.toMnemonic().toString(),
-        walletAddress: walletAddress.toString(),
-        firstChangeAddress: firstChangeAddress.toString(),
-        secondReceiveAddress: secondReceiveAddress.toString(),
-        privateKey: privateKey.toString(),
-        xPrv: xPrv.intoString("ktrv"),
-    };
-};
-
-/**
- * Create or restore a wallet.
- * @param {string | null} mnemonicPhrase - Optional mnemonic phrase for restoration.
- * @param {NetworkType} networkType - Network type.
- * @returns {Object} Wallet details.
- */
-const createOrRestoreWallet = (mnemonicPhrase, networkType) => {
-    const mnemonic = mnemonicPhrase ? new Mnemonic(mnemonicPhrase) : Mnemonic.random();
-    const seed = mnemonic.toSeed();
-    const xPrv = new XPrv(seed);
-    return deriveWalletData(xPrv, networkType);
-};
-
-/**
- * Main function for the command-line interface.
- */
-if (require.main === module) {
-    const { address, networkId, encoding } = parseArgs({
-        additionalHelpOutput: "Use this script to create or restore wallets on the Kaspa blockchain.",
-    });
-
-    const action = process.argv[2];
-    const mnemonic = process.argv[3];
-
+(async () => {
     try {
+        // Set network to Mainnet
+        const networkId = NetworkType.Mainnet;
+
+        // Initialize resolver and RPC client
+        const resolver = new Resolver();
+        const rpc = new RpcClient({
+            resolver,
+            networkId,
+            encoding,
+        });
+
+        // Connect to RPC endpoint
+        await rpc.connect();
+        console.log("Connected to", rpc.url);
+
+        /**
+         * Generate or restore wallet data.
+         * @param {string | null} mnemonicPhrase - Optional mnemonic for restoration.
+         * @returns {Object} Wallet data, including mnemonic, keys, and addresses.
+         */
+        const generateWallet = (mnemonicPhrase = null) => {
+            // Generate or use provided mnemonic
+            const mnemonic = mnemonicPhrase ? new Mnemonic(mnemonicPhrase) : Mnemonic.random();
+            console.log("Generated mnemonic:", mnemonic.toString());
+
+            const seed = mnemonic.toSeed();
+            const xPrv = new XPrv(seed);
+
+            // Derive wallet details
+            const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
+            const receiveAddressPubKey = receiveWalletXPub.deriveChild(0, false).toPublicKey();
+            const walletAddress = receiveAddressPubKey.toAddress(networkId);
+
+            const secondReceiveAddress = receiveWalletXPub.deriveChild(1, false).toPublicKey().toAddress(networkId);
+
+            const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
+            const firstChangeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(networkId);
+
+            const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
+
+            return {
+                mnemonic: mnemonic.toString(),
+                walletAddress: walletAddress.toString(),
+                firstChangeAddress: firstChangeAddress.toString(),
+                secondReceiveAddress: secondReceiveAddress.toString(),
+                privateKey: privateKey.toString(),
+                xPrv: xPrv.intoString("ktrv"),
+            };
+        };
+
+        // Parse command-line arguments
+        const action = process.argv[2];
+        const mnemonic = process.argv[3];
+
         if (action === "create") {
             console.log("Creating a new wallet...");
-            const wallet = createOrRestoreWallet(null, networkId);
+            const wallet = generateWallet(null);
             console.log(JSON.stringify(wallet, null, 2));
         } else if (action === "restore" && mnemonic) {
-            console.log("Restoring wallet from mnemonic...");
-            const wallet = createOrRestoreWallet(mnemonic, networkId);
+            console.log("Restoring wallet...");
+            const wallet = generateWallet(mnemonic);
             console.log(JSON.stringify(wallet, null, 2));
         } else {
             console.log(`Usage:
   node wasm_rpc.js create             # Create a new wallet
   node wasm_rpc.js restore <mnemonic> # Restore a wallet using a mnemonic`);
         }
-    } catch (error) {
-        console.error("Error occurred:", error.message);
-    }
-}
 
-// Export functions for external use
-module.exports = { createOrRestoreWallet };
+        // Disconnect RPC client
+        await rpc.disconnect();
+        console.log("Disconnected from", rpc.url);
+    } catch (error) {
+        console.error("Error:", error.message);
+        process.exit(1);
+    }
+})();
