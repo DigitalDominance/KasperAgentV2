@@ -119,16 +119,25 @@ node_process = Popen(
 
 async def create_wallet():
     try:
-        # Send a message to the Node.js process to create a wallet
-        node_process.stdin.write("create_wallet\n")
-        node_process.stdin.flush()
+        process = await asyncio.create_subprocess_exec(
+            "node", "wallet_service.js",  # Path to Node.js wallet service
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
 
-        # Read the response from the Node.js process
-        response = node_process.stdout.readline().strip()
-        wallet_data = json.loads(response)
+        # Communicate with the subprocess
+        stdout, stderr = await process.communicate()
+
+        # Handle errors
+        if process.returncode != 0:
+            logger.error(f"Wallet creation failed: {stderr.decode().strip()}")
+            return None
+
+        # Parse wallet data
+        wallet_data = json.loads(stdout.decode().strip())
         return wallet_data
     except Exception as e:
-        print(f"Error creating wallet: {e}")
+        logger.error(f"Error creating wallet: {e}")
         return None
 
 async def fetch_krc20_operations(wallet_address: str):
