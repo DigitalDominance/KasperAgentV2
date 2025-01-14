@@ -16,14 +16,13 @@ kaspa.initConsolePanicHook();
 
 (async () => {
     try {
-        // Set network to Mainnet
-        const networkId = NetworkType.Mainnet;
 
         // Initialize resolver and RPC client
         const resolver = new Resolver();
         const rpc = new RpcClient({
             resolver,
             networkId,
+            mainnet,
             encoding: Encoding.Borsh,
         });
 
