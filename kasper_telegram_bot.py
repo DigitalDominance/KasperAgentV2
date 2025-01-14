@@ -52,9 +52,6 @@ logger = logging.getLogger(__name__)
 # Database Setup
 #######################################
 client = MongoClient(MONGO_URI)
-db = client["kasper_bot"]
-users_collection = db["users"]
-transactions_collection = db["transactions"]
 db_manager = DBManager()
 
 #######################################
@@ -113,37 +110,27 @@ async def elevenlabs_tts(text: str) -> bytes:
 #######################################
 # Wallet and KRC20 Functions
 #######################################
-node_process = Popen(
-    ["node", "wallet_service.js"],
-    stdin=PIPE,
-    stdout=PIPE,
-    stderr=PIPE,
-    text=True
-)
+def create_wallet():
+    try:
+        logger.info("Creating wallet via Node.js...")
+        process = Popen(
+            ["node", "wallet_service.js", "createWallet"],
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate()
 
-def create_wallet(self):
-        """Create a new wallet."""
-        wallet_data = self.run_node_command("createWallet")
-        if wallet_data.get("success"):
-            try:
-                # Construct the receiving address
-                receiving_address = (
-                    f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
-                )
-                # Prepare the parsed data
-                parsed_data = {
-                    "mnemonic": wallet_data["mnemonic"],
-                    "receiving_address": receiving_address,
-                    "private_key": wallet_data["xPrv"],
-                }
-                logger.info(f"Wallet created successfully: {parsed_data}")
-                return parsed_data
-            except KeyError as e:
-                logger.error(f"Missing key in wallet data: {e}")
-                return {"success": False, "error": "Malformed wallet data"}
-        else:
-            logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
-            return {"success": False, "error": wallet_data.get('error')}
+        if process.returncode != 0:
+            logger.error(f"Wallet creation failed: {stderr}")
+            return {"success": False, "error": stderr.strip()}
+
+        wallet_data = json.loads(stdout)
+        logger.info(f"Wallet created successfully: {wallet_data}")
+        return wallet_data
+    except Exception as e:
+        logger.error(f"Error in wallet creation: {e}")
+        return {"success": False, "error": str(e)}
 
 async def fetch_krc20_operations(wallet_address: str):
     try:
@@ -167,24 +154,19 @@ async def fetch_krc20_operations(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-async def start_command(update, context):
+sync def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         user = db_manager.get_user(user_id)
         if not user:
-            # Call the Node.js wallet creation process
             wallet_data = create_wallet()
-            if wallet_data and wallet_data.get("success"):
-                wallet_address = wallet_data.get("receiving_address")
-                private_key = wallet_data.get("private_key")
+            if wallet_data.get("success"):
+                wallet_address = wallet_data.get("receivingAddress")
+                private_key = wallet_data.get("xPrv")
 
-                if not wallet_address or not private_key:
-                    raise ValueError("Incomplete wallet data")
-
-                # Save the user in the database
-                db_manager.create_user(user_id, wallet_address)
+                db_manager.create_user(user_id, wallet_address, private_key, credits=3)
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your wallet address is: {wallet_address}. You have 0 credits."
+                    f"👻 Welcome to Kasper AI! Your wallet address is: {wallet_address}. You have 3 free credits."
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
@@ -196,8 +178,7 @@ async def start_command(update, context):
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
-
-async def topup_command(update, context):
+async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = db_manager.get_user(user_id)
     if not user:
@@ -212,8 +193,7 @@ async def topup_command(update, context):
         parse_mode="Markdown"
     )
 
-
-async def endtopup_command(update, context):
+async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = db_manager.get_user(user_id)
     if not user:
@@ -233,18 +213,22 @@ async def endtopup_command(update, context):
 #######################################
 # Main
 #######################################
-def main():
-    check_ffmpeg()  # Ensure ffmpeg is installed
+ef main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
+
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
+
+    logger.info("Bot is running...")
     app.run_polling()
-    
+
 def shutdown(signum, frame):
-    logger.info("Shutting down...")
-    db_manager.client.close()  # Close MongoDB connection
+    logger.info("Shutting down gracefully...")
+    db_manager.close()
     sys.exit(0)
-    
+
 if __name__ == "__main__":
     main()
