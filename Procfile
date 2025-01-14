@@ -1,1 +1,2 @@
-worker: python kasper_telegram_bot.py
+worker: node wasm_rpc.js
+
