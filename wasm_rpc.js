@@ -6,6 +6,7 @@ const {
     Mnemonic,
     XPrv,
     DerivationPath,
+    PublicKey,
     NetworkType,
     Resolver,
     RpcClient,
@@ -14,101 +15,75 @@ const {
 
 kaspa.initConsolePanicHook();
 
-const fs = require('fs');
-const path = require('path');
-const nodeUtil = require('node:util');
-const { parseArgs: nodeParseArgs } = nodeUtil;
-
-/**
- * Helper function to parse command line arguments.
- * @returns {{action: string, mnemonic?: string, encoding: Encoding}}
- */
-function parseArgs() {
-    const script = path.basename(process.argv[1]);
-    const args = process.argv.slice(2);
-
-    const { values, positionals } = nodeParseArgs({
-        args,
-        options: {
-            encoding: { type: 'string', default: 'borsh' },
-            help: { type: 'boolean' },
-        },
-        allowPositionals: true,
-    });
-
-    if (values.help || positionals.length === 0) {
-        console.log(`Usage:
-  node ${script} create                       # Create a new wallet
-  node ${script} restore <mnemonic>          # Restore a wallet using a mnemonic
-`);
-        process.exit(0);
-    }
-
-    const [action, mnemonic] = positionals;
-
-    if (action !== 'create' && action !== 'restore') {
-        console.error(`Invalid action: ${action}`);
-        process.exit(1);
-    }
-
-    return {
-        action,
-        mnemonic,
-        encoding: values.encoding === 'json' ? Encoding.SerdeJson : Encoding.Borsh,
-    };
-}
-
-const { action, mnemonic, encoding } = parseArgs();
+// Initialize RPC globally to maintain persistent connection
+let rpc;
 
 (async () => {
     try {
-        // Initialize RPC Client
-        const rpc = new RpcClient({
+        // Establish RPC connection with resolver
+        rpc = new RpcClient({
             resolver: new Resolver(),
             networkId: "mainnet",
-            encoding,
+            encoding: Encoding.Borsh,
         });
 
-        // Connect to RPC
         console.log("Connecting to RPC...");
         await rpc.connect();
         console.log("Connected to RPC:", rpc.url);
 
-        // Wallet logic
-        if (action === 'create') {
-            const newMnemonic = Mnemonic.random();
-            console.log("Generated mnemonic:", newMnemonic.toString());
+        // Start listening for commands or calls to create wallets
+        console.log("Ready for wallet commands. Example: 'create_wallet'");
 
-            const seed = newMnemonic.toSeed();
-            const xPrv = new XPrv(seed);
+        process.stdin.setEncoding("utf-8");
+        process.stdin.on("data", (input) => {
+            const command = input.trim();
 
-            const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-            const mainReceiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
-
-            console.log("Main Receive Address:", mainReceiveAddress.toString());
-        } else if (action === 'restore') {
-            if (!mnemonic) {
-                console.error("Mnemonic is required to restore a wallet.");
-                process.exit(1);
+            if (command === "create_wallet") {
+                const walletDetails = createWallet();
+                console.log("Wallet Created:", JSON.stringify(walletDetails, null, 2));
+            } else if (command === "exit") {
+                console.log("Shutting down...");
+                process.stdin.end();
+                rpc.disconnect();
+                console.log("Disconnected from RPC:", rpc.url);
+            } else {
+                console.log("Unknown command. Use 'create_wallet' or 'exit'.");
             }
-
-            const restoredMnemonic = new Mnemonic(mnemonic);
-            console.log("Restored mnemonic:", restoredMnemonic.toString());
-
-            const seed = restoredMnemonic.toSeed();
-            const xPrv = new XPrv(seed);
-
-            const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-            const mainReceiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
-
-            console.log("Restored Main Receive Address:", mainReceiveAddress.toString());
-        }
-
-        // Disconnect from RPC
-        await rpc.disconnect();
-        console.log("Disconnected from RPC.");
+        });
     } catch (error) {
         console.error("Error:", error.message);
         process.exit(1);
     }
 })();
+
+/**
+ * Generates a new wallet with the Kaspa library.
+ * @returns {Object} Wallet details including addresses and private keys.
+ */
+function createWallet() {
+    // Generate mnemonic
+    const mnemonic = Mnemonic.random();
+    console.log("Generated mnemonic:", mnemonic.toString());
+
+    const seed = mnemonic.toSeed();
+    const xPrv = new XPrv(seed);
+
+    // Derive wallet addresses and private keys
+    const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
+    const mainReceiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
+
+    const secondReceiveAddress = receiveWalletXPub.deriveChild(1, false).toPublicKey().toAddress(NetworkType.Mainnet);
+
+    const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
+    const changeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
+
+    const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
+
+    return {
+        mnemonic: mnemonic.toString(),
+        mainReceiveAddress: mainReceiveAddress.toString(),
+        secondReceiveAddress: secondReceiveAddress.toString(),
+        changeAddress: changeAddress.toString(),
+        privateKey: privateKey.toString(),
+    };
+}
