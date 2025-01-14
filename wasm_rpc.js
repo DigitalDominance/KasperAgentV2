@@ -16,18 +16,10 @@ kaspa.initConsolePanicHook();
 
 (async () => {
     try {
-        // Set network to Mainnet
-        const networkId = NetworkType.Mainnet;
-
-        // Initialize resolver with optional custom URLs or default public URLs
-        const resolver = new Resolver({
-            urls: ["https://my-kaspa-node.com", "https://backup-node.com"], // Custom URLs
-        });
-
-        // Initialize RPC client with Encoding.Borsh and updated resolver
+        // Initialize RPC client with default resolver and Encoding.Borsh
         const rpc = new RpcClient({
-            resolver,
-            networkId,
+            resolver: new Resolver(),
+            networkId: "mainnet", // Specify Mainnet as the network ID
             encoding: Encoding.Borsh,
         });
 
@@ -35,7 +27,7 @@ kaspa.initConsolePanicHook();
         await rpc.connect();
         console.log("Connected to RPC:", rpc.url);
 
-        // Create a new wallet
+        // Generate a new wallet
         const mnemonic = Mnemonic.random(); // Generate a new mnemonic
         console.log("Generated mnemonic:", mnemonic.toString());
 
@@ -44,11 +36,11 @@ kaspa.initConsolePanicHook();
 
         // Derive wallet addresses and keys
         const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-        const receiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(networkId);
+        const receiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
         console.log("Main Receive Address:", receiveAddress.toString());
 
         const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
-        const changeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(networkId);
+        const changeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
         console.log("Change Address:", changeAddress.toString());
 
         const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
