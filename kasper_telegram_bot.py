@@ -143,7 +143,7 @@ async def generate_openai_response(user_text: str) -> str:
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "gpt-4",
+        "model": "gpt-4o-mini",
         "messages": [
             {
                 "role": "system",
