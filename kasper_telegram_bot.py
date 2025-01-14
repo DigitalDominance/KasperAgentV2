@@ -54,6 +54,26 @@ logger = logging.getLogger(__name__)
 client = MongoClient(MONGO_URI)
 db_manager = DBManager()
 
+async def handle_text_message(update, context):
+    user_id = update.effective_user.id
+    user_text = update.message.text.strip()
+    user = db.get_user(user_id)
+
+    if not user or user.get("credits", 0) <= 0:
+        await update.message.reply_text("❌ You have no credits remaining.")
+        return
+
+    try:
+        await update.message.reply_text("👻 KASPER is thinking...")
+        ai_response = await generate_openai_response(user_text)
+        mp3_audio = await elevenlabs_tts(ai_response)
+        ogg_audio = convert_mp3_to_ogg(mp3_audio)
+        db.update_user_credits(user_id, user["credits"] - 1)
+        await update.message.reply_text(ai_response)
+        await update.message.reply_voice(voice=ogg_audio)
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        await update.message.reply_text("❌ An error occurred.")
 #######################################
 # Check ffmpeg Availability
 #######################################
@@ -106,7 +126,31 @@ async def elevenlabs_tts(text: str) -> bytes:
         except Exception as e:
             logger.error(f"Error in ElevenLabs TTS: {e}")
             return b""
-
+            
+async def generate_openai_response(user_text: str) -> str:
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "gpt-4",
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": user_text}
+        ]
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"Error in OpenAI Chat Completion: {e}")
+            return "❌ An error occurred while generating a response."
 #######################################
 # Wallet and KRC20 Functions
 #######################################
