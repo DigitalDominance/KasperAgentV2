@@ -200,29 +200,58 @@ async def fetch_krc20_operations(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update, context):
     user_id = update.effective_user.id
     try:
+        # Check if the user already exists in the database
         user = db_manager.get_user(user_id)
         if not user:
-            wallet_data = create_wallet()
-            if wallet_data.get("success"):
+            # Call the Node.js wallet creation process
+            logger.info("Creating wallet for a new user...")
+            wallet_data = await create_wallet()
+            if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receivingAddress")
                 private_key = wallet_data.get("xPrv")
+                mnemonic = wallet_data.get("mnemonic")
 
-                db_manager.create_user(user_id, wallet_address, private_key, credits=3)
+                # Ensure all required fields are available
+                if not wallet_address or not private_key or not mnemonic:
+                    raise ValueError("Incomplete wallet data")
+
+                # Save the user in the database with 3 free credits
+                db_manager.create_user(
+                    telegram_id=user_id,
+                    wallet_address=wallet_address,
+                    private_key=private_key,
+                    mnemonic=mnemonic,
+                    credits=3
+                )
+
+                # Inform the user about their new wallet
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your wallet address is: {wallet_address}. You have 3 free credits."
+                    f"👻 Welcome to Kasper AI! Your wallet has been created:\n\n"
+                    f"💼 **Wallet Address:** `{wallet_address}`\n"
+                    f"🎁 You have been granted **3 free credits** to get started!",
+                    parse_mode="Markdown"
                 )
             else:
+                # Handle wallet creation failure
+                logger.error(f"Failed to create wallet: {wallet_data.get('error') if wallet_data else 'Unknown error'}")
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
+            # If the user already exists, greet them and show their wallet and credits
             await update.message.reply_text(
-                f"👋 Welcome back! Your wallet address is: {user['wallet_address']}. You have {user['credits']} credits."
+                f"👋 Welcome back!\n\n"
+                f"💼 **Wallet Address:** `{user['wallet_address']}`\n"
+                f"🎯 **Credits:** `{user['credits']}`\n\n"
+                f"Use /topup to add more credits and explore Kasper AI!",
+                parse_mode="Markdown"
             )
     except Exception as e:
+        # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
