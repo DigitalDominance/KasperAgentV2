@@ -9,26 +9,24 @@ const {
     NetworkType,
     Resolver,
     RpcClient,
-    Encoding,
 } = kaspa;
 
 kaspa.initConsolePanicHook();
 
 (async () => {
     try {
-        // Initialize RPC client with default resolver and Encoding.Borsh
+        // Initialize RPC client
         const rpc = new RpcClient({
             resolver: new Resolver(),
-            networkId: "mainnet", // Specify Mainnet as the network ID
-            encoding: Encoding.Borsh,
+            networkId: "mainnet",
         });
 
-        // Connect to RPC endpoint
+        // Connect to the Kaspa network
         await rpc.connect();
         console.log("Connected to RPC:", rpc.url);
 
         // Generate a new wallet
-        const mnemonic = Mnemonic.random(); // Generate a new mnemonic
+        const mnemonic = Mnemonic.random();
         console.log("Generated mnemonic:", mnemonic.toString());
 
         const seed = mnemonic.toSeed();
@@ -46,19 +44,19 @@ kaspa.initConsolePanicHook();
         const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
         console.log("Private Key for Main Receive Address:", privateKey.toString());
 
-        // Print wallet information
-        const walletData = {
+        // Disconnect from RPC
+        await rpc.disconnect();
+        console.log("Disconnected from RPC:", rpc.url);
+
+        // Print wallet details
+        const walletDetails = {
             mnemonic: mnemonic.toString(),
             mainReceiveAddress: receiveAddress.toString(),
             changeAddress: changeAddress.toString(),
             privateKey: privateKey.toString(),
         };
 
-        console.log("Wallet Data:", JSON.stringify(walletData, null, 2));
-
-        // Disconnect from RPC
-        await rpc.disconnect();
-        console.log("Disconnected from RPC:", rpc.url);
+        console.log("Wallet Details:", JSON.stringify(walletDetails, null, 2));
     } catch (error) {
         console.error("Error:", error.message);
         process.exit(1);
