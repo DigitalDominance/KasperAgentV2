@@ -117,28 +117,29 @@ node_process = Popen(
     text=True
 )
 
-async def create_wallet():
-    try:
-        process = await asyncio.create_subprocess_exec(
-            "node", "wasm_rpc.js",  # Path to Node.js wallet service
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        # Communicate with the subprocess
-        stdout, stderr = await process.communicate()
-
-        # Handle errors
-        if process.returncode != 0:
-            logger.error(f"Wallet creation failed: {stderr.decode().strip()}")
-            return None
-
-        # Parse wallet data
-        wallet_data = json.loads(stdout.decode().strip())
-        return wallet_data
-    except Exception as e:
-        logger.error(f"Error creating wallet: {e}")
-        return None
+def create_wallet(self):
+        """Create a new wallet."""
+        wallet_data = self.run_node_command("createWallet")
+        if wallet_data.get("success"):
+            try:
+                # Construct the receiving address
+                receiving_address = (
+                    f"{wallet_data['receivingAddress']['prefix']}:{wallet_data['receivingAddress']['payload']}"
+                )
+                # Prepare the parsed data
+                parsed_data = {
+                    "mnemonic": wallet_data["mnemonic"],
+                    "receiving_address": receiving_address,
+                    "private_key": wallet_data["xPrv"],
+                }
+                logger.info(f"Wallet created successfully: {parsed_data}")
+                return parsed_data
+            except KeyError as e:
+                logger.error(f"Missing key in wallet data: {e}")
+                return {"success": False, "error": "Malformed wallet data"}
+        else:
+            logger.error(f"Failed to create wallet: {wallet_data.get('error')}")
+            return {"success": False, "error": wallet_data.get('error')}
 
 async def fetch_krc20_operations(wallet_address: str):
     try:
@@ -162,35 +163,32 @@ async def fetch_krc20_operations(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update, context):
     user_id = update.effective_user.id
+    try:
+        user = db.get_user(user_id)
+        if not user:
+            wallet_data = create_wallet()
+            if wallet_data and wallet_data.get("success"):
+                wallet_address = wallet_data.get("receivingAddress")
+                private_key = wallet_data.get("xPrv")
 
-    # Check if the user already exists in the database
-    user = users_collection.find_one({"_id": user_id})
-    if not user:
-        # If no wallet exists, create a new one
-        wallet = await create_wallet()
-        if wallet:
-            # Save the wallet to the database
-            users_collection.insert_one({
-                "_id": user_id,
-                "wallet_address": wallet["mainReceiveAddress"],
-                "mnemonic": wallet["mnemonic"],
-                "private_key": wallet["privateKey"],
-                "credits": 0,  # Initialize with 0 credits
-            })
-            await update.message.reply_text(
-                f"👻 Wallet created!\nAddress: {wallet['mainReceiveAddress']}\n\n"
-                f"Save your mnemonic: {wallet['mnemonic']}\n"
-                f"Private Key: {wallet['privateKey']}"
-            )
+                if not wallet_address or not private_key:
+                    raise ValueError("Wallet data is incomplete")
+
+                db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
+                await update.message.reply_text(
+                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
+                )
+            else:
+                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
-            await update.message.reply_text("❌ Wallet creation failed.")
-    else:
-        # If a wallet already exists, send a welcome message with wallet details
-        await update.message.reply_text(
-            f"👻 Welcome back!\nYour wallet address: {user['wallet_address']}"
-        )
+            await update.message.reply_text(
+                f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
+            )
+    except Exception as e:
+        logger.error(f"Error in start_command for user {user_id}: {e}")
+        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
