@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timedelta
 from collections import defaultdict
 from io import BytesIO
+from subprocess import Popen, PIPE
 import traceback
 
 import httpx
@@ -166,10 +167,13 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "_id": user_id,
                 "wallet_address": wallet["mainReceiveAddress"],
                 "mnemonic": wallet["mnemonic"],
+                "private_key": wallet["privateKey"],
                 "credits": 0,  # Initialize with 0 credits
             })
             await update.message.reply_text(
-                f"👻 Wallet created!\nAddress: {wallet['mainReceiveAddress']}\n\nSave your mnemonic: {wallet['mnemonic']}"
+                f"👻 Wallet created!\nAddress: {wallet['mainReceiveAddress']}\n\n"
+                f"Save your mnemonic: {wallet['mnemonic']}\n"
+                f"Private Key: {wallet['privateKey']}"
             )
         else:
             await update.message.reply_text("❌ Wallet creation failed.")
@@ -178,30 +182,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"👻 Welcome back!\nYour wallet address: {user['wallet_address']}"
         )
-
-    # New user, create a wallet
-    await update.message.reply_text("👻 Creating your wallet, please wait...")
-    
-    wallet = await create_wallet()
-    if wallet:
-        # Store wallet data in the database
-        users_collection.insert_one({
-            "_id": user_id,
-            "wallet_address": wallet.get("walletAddress"),
-            "mnemonic": wallet.get("mnemonic"),
-            "credits": 0,
-        })
-
-        # Inform the user
-        await update.message.reply_text(
-            f"👻 Your wallet has been created!\n"
-            f"Address: {wallet['walletAddress']}\n\n"
-            f"📝 **Save your mnemonic:**\n{wallet['mnemonic']}\n\n"
-            f"⚠️ Do not share this mnemonic with anyone!"
-        )
-    else:
-        await update.message.reply_text("❌ Wallet creation failed. Please try again later.")
-
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
