@@ -1,5 +1,5 @@
 // @ts-ignore
-globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
+globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket shim
 
 const kaspa = require('./wasm/kaspa');
 const {
@@ -16,13 +16,18 @@ kaspa.initConsolePanicHook();
 
 (async () => {
     try {
+        // Set network to Mainnet
+        const networkId = NetworkType.Mainnet;
 
-        // Initialize resolver and RPC client
-        const resolver = new Resolver();
+        // Initialize resolver with optional custom URLs or default public URLs
+        const resolver = new Resolver({
+            urls: ["https://my-kaspa-node.com", "https://backup-node.com"], // Custom URLs
+        });
+
+        // Initialize RPC client with Encoding.Borsh and updated resolver
         const rpc = new RpcClient({
             resolver,
             networkId,
-            mainnet,
             encoding: Encoding.Borsh,
         });
 
