@@ -206,6 +206,11 @@ async def start_command(update, context):
         # Check if the user already exists in the database
         user = db_manager.get_user(user_id)
         if not user:
+            # Inform the user that the wallet creation is in progress
+            creating_message = await update.message.reply_text(
+                "👻 Hang tight! We're conjuring your ghostly wallet... This may take a few seconds. 🌀"
+            )
+
             # Log wallet creation process
             logger.info("Creating wallet for a new user...")
 
@@ -230,9 +235,9 @@ async def start_command(update, context):
                     credits=3
                 )
 
-                # Inform the user about their new wallet
-                await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your wallet has been created:\n\n"
+                # Update the ghostly message with the wallet details
+                await creating_message.edit_text(
+                    f"👻 Welcome to Kasper AI! Your wallet has been conjured:\n\n"
                     f"💼 **Wallet Address:** `{wallet_address}`\n"
                     f"🔑 **Mnemonic:** `{mnemonic}`\n\n"
                     f"⚠️ **Important:** Save your mnemonic phrase securely. You will need it to recover your wallet.\n\n"
@@ -243,7 +248,7 @@ async def start_command(update, context):
                 # Handle wallet creation failure
                 error_message = wallet_data.get("error") if wallet_data else "Unknown error"
                 logger.error(f"Failed to create wallet: {error_message}")
-                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
+                await creating_message.edit_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
             # If the user already exists, greet them and show their wallet and credits
             await update.message.reply_text(
@@ -257,7 +262,6 @@ async def start_command(update, context):
         # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
-
 
 
 
