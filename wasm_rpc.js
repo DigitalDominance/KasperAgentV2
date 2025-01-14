@@ -1,13 +1,7 @@
 // @ts-ignore
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket shim
 const kaspa = require('./wasm/kaspa');
-const {
-    Mnemonic,
-    XPrv,
-    DerivationPath,
-    PublicKey,
-    NetworkType,
-} = kaspa;
+const { Mnemonic, XPrv, DerivationPath, NetworkType } = kaspa;
 
 kaspa.initConsolePanicHook();
 
@@ -39,17 +33,40 @@ const createWallet = async (mnemonicPhrase = null) => {
         // Derive private key for the first receive address
         const firstReceivePrivKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
 
-        // Return wallet data
-        return {
+        // Construct and return wallet data
+        const walletData = {
             mnemonic: mnemonic.toString(),
-            walletAddress: walletAddress,
+            walletAddress: walletAddress.toString(),
             xPrv: xPrv.intoString("ktrv"),
-            firstChangeAddress: firstChangeAddress,
-            secondReceiveAddress: secondReceivePubKey.toAddress(NetworkType.Mainnet),
+            firstChangeAddress: firstChangeAddress.toString(),
+            secondReceiveAddress: secondReceivePubKey.toAddress(NetworkType.Mainnet).toString(),
             privateKey: firstReceivePrivKey.toString(),
         };
+
+        console.log("Wallet data successfully generated:", JSON.stringify(walletData, null, 2));
+        return walletData;
     } catch (error) {
         console.error("Error creating wallet:", error);
+        return null;
+    }
+};
+
+/**
+ * Restore a wallet from an existing mnemonic phrase.
+ * @param {string} mnemonicPhrase - The mnemonic phrase to restore the wallet.
+ * @returns {Object | null} Wallet data derived from the mnemonic.
+ */
+const restoreWallet = async (mnemonicPhrase) => {
+    if (!mnemonicPhrase) {
+        console.error("Mnemonic phrase is required to restore a wallet.");
+        return null;
+    }
+
+    try {
+        console.log("Restoring wallet from mnemonic...");
+        return await createWallet(mnemonicPhrase);
+    } catch (error) {
+        console.error("Error restoring wallet:", error);
         return null;
     }
 };
@@ -59,16 +76,34 @@ const createWallet = async (mnemonicPhrase = null) => {
  */
 if (require.main === module) {
     (async () => {
-        console.log("Creating a new wallet...");
-        const wallet = await createWallet();
-        if (wallet) {
-            console.log("Wallet created successfully:");
-            console.log(JSON.stringify(wallet, null, 2));
+        const action = process.argv[2];
+        const mnemonic = process.argv[3]; // Optional mnemonic for restore
+
+        if (action === "create") {
+            console.log("Creating a new wallet...");
+            const wallet = await createWallet();
+            if (wallet) {
+                console.log("Wallet created successfully:");
+                console.log(JSON.stringify(wallet, null, 2));
+            } else {
+                console.error("Failed to create wallet.");
+            }
+        } else if (action === "restore" && mnemonic) {
+            console.log("Restoring wallet...");
+            const wallet = await restoreWallet(mnemonic);
+            if (wallet) {
+                console.log("Wallet restored successfully:");
+                console.log(JSON.stringify(wallet, null, 2));
+            } else {
+                console.error("Failed to restore wallet.");
+            }
         } else {
-            console.error("Failed to create wallet.");
+            console.log("Usage:");
+            console.log("  node wasm_rpc.js create             # Create a new wallet");
+            console.log("  node wasm_rpc.js restore <mnemonic> # Restore a wallet using a mnemonic");
         }
     })();
 }
 
-// Export the createWallet function for external use
-module.exports = { createWallet };
+// Export functions for external use
+module.exports = { createWallet, restoreWallet };
