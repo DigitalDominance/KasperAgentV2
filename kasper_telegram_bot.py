@@ -213,7 +213,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #######################################
 # Main
 #######################################
-ef main():
+def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("topup", topup_command))
