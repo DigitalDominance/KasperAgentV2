@@ -1,5 +1,7 @@
 import os
 import json
+import signal
+import sys
 import logging
 import asyncio
 import subprocess
@@ -8,6 +10,7 @@ from collections import defaultdict
 from io import BytesIO
 from subprocess import Popen, PIPE
 import traceback
+from db_manager import DBManager
 
 import httpx
 from pydub import AudioSegment
@@ -52,6 +55,7 @@ client = MongoClient(MONGO_URI)
 db = client["kasper_bot"]
 users_collection = db["users"]
 transactions_collection = db["transactions"]
+db_manager = DBManager()
 
 #######################################
 # Check ffmpeg Availability
@@ -166,33 +170,36 @@ async def fetch_krc20_operations(wallet_address: str):
 async def start_command(update, context):
     user_id = update.effective_user.id
     try:
-        user = db.get_user(user_id)
+        user = db_manager.get_user(user_id)
         if not user:
+            # Call the Node.js wallet creation process
             wallet_data = create_wallet()
             if wallet_data and wallet_data.get("success"):
-                wallet_address = wallet_data.get("receivingAddress")
-                private_key = wallet_data.get("xPrv")
+                wallet_address = wallet_data.get("receiving_address")
+                private_key = wallet_data.get("private_key")
 
                 if not wallet_address or not private_key:
-                    raise ValueError("Wallet data is incomplete")
+                    raise ValueError("Incomplete wallet data")
 
-                db.add_user(user_id, credits=3, wallet=wallet_address, private_key=private_key)
+                # Save the user in the database
+                db_manager.create_user(user_id, wallet_address)
                 await update.message.reply_text(
-                    f"👻 Welcome to Kasper AI! Your deposit wallet is: {wallet_address}. You have 3 free credits."
+                    f"👻 Welcome to Kasper AI! Your wallet address is: {wallet_address}. You have 0 credits."
                 )
             else:
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
             await update.message.reply_text(
-                f"👋 Welcome back! You have {user['credits']} credits. Your deposit wallet is: {user['wallet']}."
+                f"👋 Welcome back! Your wallet address is: {user['wallet_address']}. You have {user['credits']} credits."
             )
     except Exception as e:
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
-async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def topup_command(update, context):
     user_id = update.effective_user.id
-    user = users_collection.find_one({"_id": user_id})
+    user = db_manager.get_user(user_id)
     if not user:
         await update.message.reply_text("❌ Please use /start first.")
         return
@@ -201,13 +208,14 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🔍 **Wallet Address:** `{wallet_address}`\n\n"
         f"⚖️ **Conversion Rate:** 200 KASPER = 1 Credit\n\n"
-        "Send KASPER tokens to this address to top up your credits.\nUse `/endtopup` to calculate credits.",
+        "Send KASPER tokens to this address to top up your credits.",
         parse_mode="Markdown"
     )
 
-async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def endtopup_command(update, context):
     user_id = update.effective_user.id
-    user = users_collection.find_one({"_id": user_id})
+    user = db_manager.get_user(user_id)
     if not user:
         await update.message.reply_text("❌ Please use /start first.")
         return
@@ -217,7 +225,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if new_transactions:
         total_amount = sum(tx["amount"] for tx in new_transactions)
         credits_added = int(total_amount * CREDIT_CONVERSION_RATE)
-        users_collection.update_one({"_id": user_id}, {"$inc": {"credits": credits_added}})
+        db_manager.update_credits(user_id, credits_added)
         await update.message.reply_text(f"💰 {credits_added} credits added.")
     else:
         await update.message.reply_text("🔍 No new transactions detected.")
@@ -232,6 +240,11 @@ def main():
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
     app.run_polling()
-
+    
+def shutdown(signum, frame):
+    logger.info("Shutting down...")
+    db_manager.client.close()  # Close MongoDB connection
+    sys.exit(0)
+    
 if __name__ == "__main__":
     main()
