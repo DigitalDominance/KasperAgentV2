@@ -154,7 +154,7 @@ async def fetch_krc20_operations(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-sync def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         user = db_manager.get_user(user_id)
