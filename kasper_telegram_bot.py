@@ -68,7 +68,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        await update.message.reply_text("👻 KASPER is thinking... 🌀")
+        await update.message.reply_text("👻 KASPER is recording a message... 🌀")
         ai_response = await generate_openai_response(user_text)
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
