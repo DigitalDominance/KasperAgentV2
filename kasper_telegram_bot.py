@@ -179,23 +179,64 @@ def create_wallet():
 
 
 async def fetch_krc20_operations(wallet_address: str):
+    """
+    Fetch new KRC-20 transfer operations for a specific wallet address.
+    
+    Args:
+        wallet_address (str): The wallet address to filter transactions for.
+    
+    Returns:
+        List[dict]: A list of new transactions detected.
+    """
     try:
+        # Define the API URL with the wallet address and ticker 'KASPER'
+        api_url = f"https://api.kasplex.org/v1/krc20/oplist?address={wallet_address}&tick=KASPER"
+
+        logger.info(f"Fetching KRC20 transactions for wallet: {wallet_address}")
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(KRC20_API_URL)
+            response = await client.get(api_url)
             response.raise_for_status()
-            operations = response.json().get("result", [])
+            data = response.json()
+
+            # Extract transactions from the API response
+            operations = data.get("result", [])
             new_transactions = []
+
             for op in operations:
-                if op["to"] == wallet_address and op["op"] == "TRANSFER":
-                    if not transactions_collection.find_one({"hashRev": op["hashRev"]}):
-                        amount = int(op["amt"]) / 1e8
-                        transaction = {"amount": amount, "hashRev": op["hashRev"]}
-                        transactions_collection.insert_one(transaction)
+                # Process only 'TRANSFER' operations that are accepted
+                if op["op"] == "TRANSFER" and op.get("opAccept") == "1":
+                    tx_hash = op["hashRev"]
+
+                    # Check if the transaction is already recorded
+                    if not db_manager.transaction_exists(tx_hash):
+                        # Parse the amount and other transaction details
+                        amount = int(op["amt"]) / 1e8  # Convert from sompi to KAS
+                        transaction = {
+                            "amount": amount,
+                            "hashRev": tx_hash,
+                            "from": op["from"],
+                            "to": op["to"],
+                            "timestamp": int(op["mtsAdd"]),
+                        }
+
+                        # Save the new transaction to the database
+                        db_manager.add_transaction(transaction)
                         new_transactions.append(transaction)
+
+            logger.info(f"New transactions found: {new_transactions}")
             return new_transactions
-    except Exception as e:
-        logger.error(f"KRC20 fetch error: {e}")
+
+    except httpx.RequestError as e:
+        logger.error(f"HTTP error while fetching KRC20 transactions: {e}")
         return []
+    except KeyError as e:
+        logger.error(f"Error processing transaction data: Missing key {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error in fetch_krc20_operations: {e}")
+        return []
+
 
 #######################################
 # Telegram Command Handlers
@@ -283,19 +324,30 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = db_manager.get_user(user_id)
+
     if not user:
         await update.message.reply_text("❌ Please use /start first.")
         return
 
     wallet_address = user["wallet_address"]
+
+    # Fetch new transactions for the wallet address
     new_transactions = await fetch_krc20_operations(wallet_address)
+
     if new_transactions:
         total_amount = sum(tx["amount"] for tx in new_transactions)
         credits_added = int(total_amount * CREDIT_CONVERSION_RATE)
+
+        # Update user credits in the database
         db_manager.update_credits(user_id, credits_added)
-        await update.message.reply_text(f"💰 {credits_added} credits added.")
+
+        await update.message.reply_text(
+            f"💰 You've received **{total_amount:.2f} KASPER**, adding **{credits_added} credits** to your account.\n\n"
+            "Thank you for topping up!"
+        )
     else:
-        await update.message.reply_text("🔍 No new transactions detected.")
+        await update.message.reply_text("🔍 No new transactions detected. Please try again later.")
+
 
 #######################################
 # Main
