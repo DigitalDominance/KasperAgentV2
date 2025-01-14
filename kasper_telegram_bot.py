@@ -389,7 +389,7 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("⚠️ Please provide a description for the image. For example: `/generateimage a magical castle`")
         return
 
-    preset_prompt = "Always add a little white ghost with a slightly super feint blue glow to the scene. If its not about ghosts or Kasper, then in the background. if its about it then make thaht ghost the focus."
+    preset_prompt = "Always add a little white ghost with a slightly super feint blue glow to the scene. If its not about ghosts or the mentioned character kasper (our memecoin), then in the background. if its about it then make thaht ghost the focus."
     final_prompt = f"{preset_prompt}{user_input}"
 
     # Notify user of the image generation process
