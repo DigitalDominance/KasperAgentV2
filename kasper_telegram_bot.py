@@ -114,7 +114,7 @@ def create_wallet():
     try:
         logger.info("Creating wallet via Node.js...")
         process = Popen(
-            ["node", "wallet_service.js", "createWallet"],
+            ["node", "wasm_rpc.js", "createWallet"],
             stdout=PIPE,
             stderr=PIPE,
             text=True
