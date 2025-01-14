@@ -93,24 +93,37 @@ async def elevenlabs_tts(text: str) -> bytes:
 # Wallet and KRC20 Functions
 #######################################
 async def create_wallet():
+    """
+    Invokes the wasm_rpc.js Node.js script using a child process to generate a wallet.
+    """
     try:
-        result = subprocess.run(
-            ["node", "wasm_rpc.js"], capture_output=True, text=True, check=False
+        # Use asyncio subprocess to call the Node.js script
+        process = await asyncio.create_subprocess_exec(
+            "node", "wasm_rpc.js",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        if result.returncode != 0:
-            logger.error(f"Wallet creation failed: {result.stderr}")
+        stdout, stderr = await process.communicate()
+
+        # Handle errors during wallet creation
+        if process.returncode != 0:
+            logger.error(f"Wallet creation failed: {stderr.decode()}")
             return None
 
-        wallet_data = json.loads(result.stdout.strip())
+        # Parse the JSON output from Node.js
+        wallet_data = json.loads(stdout.decode().strip())
         return {
             "mnemonic": wallet_data["mnemonic"],
-            "walletAddress": wallet_data["walletAddress"]["prefix"]
-            + ":"
-            + wallet_data["walletAddress"]["payload"],
+            "walletAddress": wallet_data["walletAddress"],
+            "xPrv": wallet_data["xPrv"],
+            "firstChangeAddress": wallet_data["firstChangeAddress"],
+            "secondReceiveAddress": wallet_data["secondReceiveAddress"],
+            "privateKey": wallet_data["privateKey"],
         }
     except Exception as e:
-        logger.error(f"Wallet creation error: {e}")
+        logger.error(f"Error creating wallet: {e}")
         return None
+
 
 async def fetch_krc20_operations(wallet_address: str):
     try:
@@ -135,18 +148,37 @@ async def fetch_krc20_operations(wallet_address: str):
 # Telegram Command Handlers
 #######################################
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /start command to initialize a user's wallet and profile.
+    """
     user_id = update.effective_user.id
-    if not users_collection.find_one({"_id": user_id}):
+    user = users_collection.find_one({"_id": user_id})
+
+    if not user:
         wallet = await create_wallet()
         if wallet:
-            users_collection.insert_one({"_id": user_id, "wallet": wallet, "credits": 0})
+            users_collection.insert_one({
+                "_id": user_id,
+                "wallet_address": wallet["walletAddress"],
+                "mnemonic": wallet["mnemonic"],
+                "xPrv": wallet["xPrv"],
+                "credits": 0,
+            })
             await update.message.reply_text(
-                f"👻 Wallet created! Address: {wallet['walletAddress']}"
+                f"👻 Wallet successfully created!\n\n"
+                f"**Address:** `{wallet['walletAddress']}`\n"
+                f"**Mnemonic:** `{wallet['mnemonic']}`\n\n"
+                f"💾 Save your mnemonic securely!"
             )
         else:
             await update.message.reply_text("❌ Wallet creation failed.")
     else:
-        await update.message.reply_text("👻 Welcome back!")
+        await update.message.reply_text(f"👻 Welcome back! Your wallet: {user['wallet_address']}")
+
+    USER_MESSAGE_LIMITS[user_id]["count"] = 0
+    USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
+    await update.message.reply_text("👻 KASPER is ready to assist you!")
+
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
