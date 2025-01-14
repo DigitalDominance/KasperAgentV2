@@ -206,9 +206,12 @@ async def start_command(update, context):
         # Check if the user already exists in the database
         user = db_manager.get_user(user_id)
         if not user:
-            # Call the Node.js wallet creation process
+            # Log wallet creation process
             logger.info("Creating wallet for a new user...")
-            wallet_data = await create_wallet()  # `await` is correct here since `create_wallet` is async
+
+            # Call the Node.js wallet creation process (synchronously)
+            wallet_data = create_wallet()  # No `await` here as `create_wallet` is not async
+
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receivingAddress")
                 private_key = wallet_data.get("xPrv")
@@ -238,7 +241,8 @@ async def start_command(update, context):
                 )
             else:
                 # Handle wallet creation failure
-                logger.error(f"Failed to create wallet: {wallet_data.get('error') if wallet_data else 'Unknown error'}")
+                error_message = wallet_data.get("error") if wallet_data else "Unknown error"
+                logger.error(f"Failed to create wallet: {error_message}")
                 await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
         else:
             # If the user already exists, greet them and show their wallet and credits
@@ -253,6 +257,7 @@ async def start_command(update, context):
         # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 
 
