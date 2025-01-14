@@ -223,6 +223,20 @@ async def fetch_krc20_operations(wallet_address: str):
     except Exception as e:
         logger.error(f"Error fetching KRC20 operations: {e}")
         return []
+        
+async def send_welcome_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👻 Welcome to **Kasper AI**, your friendly ghostly assistant!\n\n"
+        "🎃 Here's what I can do for you:\n"
+        "🔹 **/start** - Create your ghostly wallet and receive 3 free credits.\n"
+        "🔹 **/topup** - View your wallet address to send $KASPER and add credits.\n"
+        "🔹 **/endtopup** - Detect your transactions and credit your account.\n"
+        "🔹 **/balance** - Check your current credit balance.\n\n"
+        "💬 Just send me a message, and I'll respond with insightful answers and spooky wisdom.\n"
+        "🎙️ I'll also send you a voice memo for an immersive experience!\n\n"
+        "⚠️ **Remember:** Each AI interaction deducts 1 credit.\n\n"
+        "Let's start exploring the ghostly world of Kasper! 👻"
+    )
 
 
 #######################################
@@ -289,7 +303,20 @@ async def start_command(update, context):
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = db_manager.get_user(user_id)
+    
+    if not user:
+        await update.message.reply_text("❌ Please use /start first to create your ghostly wallet.")
+        return
 
+    credits = user.get("credits", 0)
+    await update.message.reply_text(
+        f"👻 Your current balance is **{credits} credits**.\n\n"
+        "Use /topup to add more credits and keep chatting with Kasper AI!",
+        parse_mode="Markdown"
+    )
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -333,13 +360,18 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main
 #######################################
 def main():
-    # Initialize the Telegram bot application
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Add command handlers
+    # Command Handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
+    app.add_handler(CommandHandler("balance", balance_command))
+
+    # Welcome Message for New Users
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, send_welcome_message))
+
+    # General Text Handler for AI Responses
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     signal.signal(signal.SIGINT, shutdown)
