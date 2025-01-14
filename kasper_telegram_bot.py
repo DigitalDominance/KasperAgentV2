@@ -94,12 +94,12 @@ async def elevenlabs_tts(text: str) -> bytes:
 #######################################
 async def create_wallet():
     """
-    Invokes the wasm_rpc.js Node.js script using a child process to generate a wallet.
+    Invokes the wasm_rpc.js Node.js script using a child process to generate or restore a wallet.
     """
     try:
         # Use asyncio subprocess to call the Node.js script
         process = await asyncio.create_subprocess_exec(
-            "node", "wasm_rpc.js",
+            "node", "wasm_rpc.js", "create",  # Specify the "create" action
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -123,6 +123,7 @@ async def create_wallet():
     except Exception as e:
         logger.error(f"Error creating wallet: {e}")
         return None
+
 
 
 async def fetch_krc20_operations(wallet_address: str):
@@ -155,8 +156,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = users_collection.find_one({"_id": user_id})
 
     if not user:
+        # Call the updated create_wallet function
         wallet = await create_wallet()
         if wallet:
+            # Save wallet details in the database
             users_collection.insert_one({
                 "_id": user_id,
                 "wallet_address": wallet["walletAddress"],
@@ -171,13 +174,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💾 Save your mnemonic securely!"
             )
         else:
-            await update.message.reply_text("❌ Wallet creation failed.")
+            await update.message.reply_text("❌ Wallet creation failed. Please try again later.")
+            return
     else:
+        # User already exists; welcome back message
         await update.message.reply_text(f"👻 Welcome back! Your wallet: {user['wallet_address']}")
 
+    # Reset rate limits for the user
     USER_MESSAGE_LIMITS[user_id]["count"] = 0
     USER_MESSAGE_LIMITS[user_id]["reset_time"] = datetime.utcnow() + timedelta(hours=24)
     await update.message.reply_text("👻 KASPER is ready to assist you!")
+
 
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
