@@ -54,26 +54,36 @@ logger = logging.getLogger(__name__)
 client = MongoClient(MONGO_URI)
 db_manager = DBManager()
 
-async def handle_text_message(update, context):
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    user = db_manager.get_user(user_id)
     user_text = update.message.text.strip()
-    user = db.get_user(user_id)
 
-    if not user or user.get("credits", 0) <= 0:
-        await update.message.reply_text("❌ You have no credits remaining.")
+    if not user:
+        await update.message.reply_text("❌ Please use /start to create a wallet before interacting.")
+        return
+
+    if user["credits"] <= 0:
+        await update.message.reply_text("❌ You have no credits remaining. Use /topup to add credits.")
         return
 
     try:
-        await update.message.reply_text("👻 KASPER is thinking...")
+        await update.message.reply_text("👻 KASPER is thinking... 🌀")
         ai_response = await generate_openai_response(user_text)
         mp3_audio = await elevenlabs_tts(ai_response)
         ogg_audio = convert_mp3_to_ogg(mp3_audio)
-        db.update_user_credits(user_id, user["credits"] - 1)
+
+        # Deduct one credit and update the database
+        db_manager.update_credits(user_id, -1)
+
+        # Send AI response and voice message
         await update.message.reply_text(ai_response)
         await update.message.reply_voice(voice=ogg_audio)
+
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await update.message.reply_text("❌ An error occurred.")
+        logger.error(f"Error handling text message: {e}")
+        await update.message.reply_text("❌ An error occurred while processing your request.")
+
 #######################################
 # Check ffmpeg Availability
 #######################################
@@ -353,10 +363,10 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main
 #######################################
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
