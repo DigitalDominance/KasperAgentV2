@@ -136,7 +136,25 @@ async def elevenlabs_tts(text: str) -> bytes:
         except Exception as e:
             logger.error(f"Error in ElevenLabs TTS: {e}")
             return b""
-            
+		
+async def generate_image(prompt: str) -> str:
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "model": "dall-e-3",
+        "prompt": prompt,
+        "size": "1024x1024",
+        "quality": "standard",
+        "n": 1,
+    }
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()["data"][0]["url"]
+        except Exception as e:
+            logger.error(f"Error generating image: {e}")
+            return None
+		
 async def generate_openai_response(user_text: str) -> str:
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -353,6 +371,42 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	"👻 Once transaction is finished, click /endtopup to receive credits",
         parse_mode="Markdown"
     )
+	
+async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = db_manager.get_user(user_id)
+
+    if not user:
+        await update.message.reply_text("❌ Please use /start first to create your ghostly wallet.")
+        return
+
+    if user["credits"] < 3:
+        await update.message.reply_text("❌ You need at least 3 credits to generate an image. Use /topup to add more credits.")
+        return
+
+    user_input = " ".join(context.args)
+    if not user_input:
+        await update.message.reply_text("⚠️ Please provide a description for the image. For example: `/generateimage a magical castle`")
+        return
+
+    preset_prompt = "Kasper is conjuring a magical scene of: "
+    final_prompt = f"{preset_prompt}{user_input}"
+
+    # Notify user of the image generation process
+    await update.message.reply_text("👻 Kasper is conjuring your beautiful art... 🌀")
+
+    # Generate the image
+    image_url = await generate_image(final_prompt)
+
+    if image_url:
+        # Deduct 3 credits and update the database
+        db_manager.update_credits(user_id, -3)
+
+        # Send the generated image
+        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=image_url)
+        await update.message.reply_text("🎨 Here is your ghostly masterpiece! 👻")
+    else:
+        await update.message.reply_text("❌ Oops! Something went wrong while conjuring your image. Please try again.")
 
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -385,6 +439,7 @@ def main():
 
     # Command Handlers
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("generateimage", generate_image_command))
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
     app.add_handler(CommandHandler("balance", balance_command))
