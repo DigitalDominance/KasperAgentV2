@@ -318,7 +318,7 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if new_transactions:
         total_amount = sum(tx["amount"] for tx in new_transactions)
-        credits_added = int(total_amount * CREDIT_CONVERSION_RATE)
+        credits_added = int(total_amount / CREDIT_CONVERSION_RATE)
         db_manager.update_credits(user_id, credits_added)
 
         await update.message.reply_text(
