@@ -52,13 +52,10 @@ function createWallet() {
 }
 
 // Command processing
-rl.on("line", (line) => {
-    const command = line.trim();
-
-    if (command === "create_wallet") {
+process.stdin.resume();
+process.on("message", (msg) => {
+    if (msg === "create_wallet") {
         const wallet = createWallet();
-        console.log(JSON.stringify(wallet)); // Send wallet data back to Python
-    } else {
-        console.error(`Unknown command: ${command}`);
+        process.send(wallet);
     }
 });
