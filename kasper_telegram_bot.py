@@ -137,22 +137,29 @@ async def elevenlabs_tts(text: str) -> bytes:
             logger.error(f"Error in ElevenLabs TTS: {e}")
             return b""
 		
-async def generate_image(prompt: str) -> str:
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+async def generate_image_with_openai(prompt: str) -> str:
+    api_url = "https://api.openai.com/v1/images/generations"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "model": "dall-e-3",
+        "model": "dall-e-2",
         "prompt": prompt,
+        "n": 1,
         "size": "1024x1024",
         "quality": "standard",
-        "n": 1,
+        "response_format": "url"
     }
+
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=payload)
+            response = await client.post(api_url, headers=headers, json=payload)
             response.raise_for_status()
-            return response.json()["data"][0]["url"]
+            data = response.json()
+            return data["data"][0]["url"]
         except Exception as e:
-            logger.error(f"Error generating image: {e}")
+            logger.error(f"Error in OpenAI API call for image generation: {e}")
             return None
 		
 async def generate_openai_response(user_text: str) -> str:
@@ -372,6 +379,8 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 	
+MAX_PROMPT_LENGTH = 1000  # Maximum characters for DALL-E 2
+
 async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = db_manager.get_user(user_id)
@@ -392,21 +401,30 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
     preset_prompt = "Always add a little white ghost with a slightly super feint blue glow to the scene. If its not about ghosts or the mentioned character kasper (our memecoin), then in the background. if its about it then make thaht ghost the focus."
     final_prompt = f"{preset_prompt}{user_input}"
 
+    # Truncate prompt if it exceeds the maximum allowed length
+    if len(final_prompt) > MAX_PROMPT_LENGTH:
+        final_prompt = final_prompt[:MAX_PROMPT_LENGTH]
+        await update.message.reply_text("⚠️ Your prompt was too long and has been shortened to fit.")
+
     # Notify user of the image generation process
     await update.message.reply_text("👻 Kasper is conjuring your beautiful art... 🌀")
 
-    # Generate the image
-    image_url = await generate_image(final_prompt)
+    try:
+        # Generate the image
+        image_url = await generate_image_with_openai(final_prompt)
 
-    if image_url:
-        # Deduct 3 credits and update the database
-        db_manager.update_credits(user_id, -3)
+        if image_url:
+            # Deduct 3 credits and update the database
+            db_manager.update_credits(user_id, -3)
 
-        # Send the generated image
-        await context.bot.send_photo(chat_id=update.effective_chat.id, photo=image_url)
-        await update.message.reply_text("🎨 Here is your ghostly masterpiece! 👻")
-    else:
-        await update.message.reply_text("❌ Oops! Something went wrong while conjuring your image. Please try again.")
+            # Send the generated image
+            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=image_url)
+            await update.message.reply_text("🎨 Here is your ghostly masterpiece! 👻")
+        else:
+            await update.message.reply_text("❌ Oops! Something went wrong while conjuring your image. Please try again.")
+    except Exception as e:
+        logger.error(f"Error generating image: {e}")
+        await update.message.reply_text("❌ An error occurred while generating your image. Please try again later.")
 
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
