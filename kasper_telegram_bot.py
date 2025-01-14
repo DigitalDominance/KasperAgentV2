@@ -108,21 +108,26 @@ async def elevenlabs_tts(text: str) -> bytes:
 #######################################
 # Wallet and KRC20 Functions
 #######################################
+node_process = Popen(
+    ["node", "wallet_service.js"],
+    stdin=PIPE,
+    stdout=PIPE,
+    stderr=PIPE,
+    text=True
+)
+
 async def create_wallet():
     try:
-        process = await asyncio.create_subprocess_exec(
-            "node", "wasm_rpc.js", "create",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode != 0:
-            logger.error(f"Wallet creation failed: {stderr.decode()}")
-            return None
-        wallet_data = json.loads(stdout.decode().strip())
+        # Send a message to the Node.js process to create a wallet
+        node_process.stdin.write("create_wallet\n")
+        node_process.stdin.flush()
+
+        # Read the response from the Node.js process
+        response = node_process.stdout.readline().strip()
+        wallet_data = json.loads(response)
         return wallet_data
     except Exception as e:
-        logger.error(f"Error creating wallet: {e}")
+        print(f"Error creating wallet: {e}")
         return None
 
 async def fetch_krc20_operations(wallet_address: str):
@@ -148,16 +153,31 @@ async def fetch_krc20_operations(wallet_address: str):
 # Telegram Command Handlers
 #######################################
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the /start command for the bot."""
     user_id = update.effective_user.id
-    user = users_collection.find_one({"_id": user_id})
 
-    if user:
-        # Existing user, greet them
+    # Check if the user already exists in the database
+    user = users_collection.find_one({"_id": user_id})
+    if not user:
+        # If no wallet exists, create a new one
+        wallet = await create_wallet()
+        if wallet:
+            # Save the wallet to the database
+            users_collection.insert_one({
+                "_id": user_id,
+                "wallet_address": wallet["mainReceiveAddress"],
+                "mnemonic": wallet["mnemonic"],
+                "credits": 0,  # Initialize with 0 credits
+            })
+            await update.message.reply_text(
+                f"👻 Wallet created!\nAddress: {wallet['mainReceiveAddress']}\n\nSave your mnemonic: {wallet['mnemonic']}"
+            )
+        else:
+            await update.message.reply_text("❌ Wallet creation failed.")
+    else:
+        # If a wallet already exists, send a welcome message with wallet details
         await update.message.reply_text(
-            f"👻 Welcome back! Your wallet address is:\n{user['wallet_address']}"
+            f"👻 Welcome back!\nYour wallet address: {user['wallet_address']}"
         )
-        return
 
     # New user, create a wallet
     await update.message.reply_text("👻 Creating your wallet, please wait...")
