@@ -155,24 +155,31 @@ async def generate_openai_response(user_text: str) -> str:
 # Wallet and KRC20 Functions
 #######################################
 def create_wallet():
-    logger.info("Creating wallet via Node.js...")
+    """
+    Create a wallet by invoking the Node.js script synchronously.
+    """
     try:
-        process = subprocess.Popen(
-            ["node", "wasm_rpc.js", "createWallet"],
+        logger.info("Creating wallet via Node.js...")
+
+        # Run the Node.js script to create a wallet
+        result = subprocess.run(
+            ["node", "wallet_service.js", "createWallet"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
-        stdout, stderr = process.communicate()
-        logger.info(f"Raw stdout: {stdout}")
-        logger.error(f"Raw stderr: {stderr}")
-        if process.returncode != 0:
-            logger.error("Node.js script failed.")
+
+        # Log stdout and stderr
+        logger.info(f"Raw stdout: {result.stdout.strip()}")
+        logger.error(f"Raw stderr: {result.stderr.strip()}")
+
+        # Check the return code
+        if result.returncode != 0:
+            logger.error(f"Node.js process failed with return code {result.returncode}")
             return None
-        return json.loads(stdout.strip())  # Try parsing the output
-    except json.JSONDecodeError as e:
-        logger.error(f"Error parsing wallet creation response: {e}")
-        return None
+
+        # Parse the JSON output from the script
+        return json.loads(result.stdout.strip())
     except Exception as e:
         logger.error(f"Error in wallet creation: {e}")
         return None
@@ -200,59 +207,58 @@ async def fetch_krc20_operations(wallet_address: str):
 #######################################
 # Telegram Command Handlers
 #######################################
-async def start_command(update, context):
+def start_command(update, context):
     user_id = update.effective_user.id
     try:
-        # Check if the user already exists in the database
+        # Check if the user already exists
         user = db_manager.get_user(user_id)
         if not user:
-            # Call the Node.js wallet creation process
-            logger.info("Creating wallet for a new user...")
-            wallet_data = await create_wallet()  # `await` is correct here since `create_wallet` is async
+            logger.info(f"Creating wallet for new user: {user_id}")
+
+            # Create a wallet
+            wallet_data = create_wallet()
+
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receivingAddress")
                 private_key = wallet_data.get("xPrv")
                 mnemonic = wallet_data.get("mnemonic")
 
-                # Ensure all required fields are available
                 if not wallet_address or not private_key or not mnemonic:
-                    raise ValueError("Incomplete wallet data")
+                    raise ValueError("Incomplete wallet data received.")
 
-                # Save the user in the database with 3 free credits
+                # Save the user to the database with initial credits
                 db_manager.create_user(
                     telegram_id=user_id,
                     wallet_address=wallet_address,
                     private_key=private_key,
                     mnemonic=mnemonic,
-                    credits=3
+                    credits=3,
                 )
 
-                # Inform the user about their new wallet
-                await update.message.reply_text(
+                # Respond to the user
+                update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Your wallet has been created:\n\n"
                     f"💼 **Wallet Address:** `{wallet_address}`\n"
                     f"🔑 **Mnemonic:** `{mnemonic}`\n\n"
-                    f"⚠️ **Important:** Save your mnemonic phrase securely. You will need it to recover your wallet.\n\n"
-                    f"🎁 You have been granted **3 free credits** to get started!",
-                    parse_mode="Markdown"
+                    f"⚠️ **Important:** Save your mnemonic phrase securely.\n\n"
+                    f"🎁 You have been granted **3 free credits**!",
+                    parse_mode="Markdown",
                 )
             else:
-                # Handle wallet creation failure
-                logger.error(f"Failed to create wallet: {wallet_data.get('error') if wallet_data else 'Unknown error'}")
-                await update.message.reply_text("⚠️ Failed to create a wallet. Please try again later.")
+                logger.error(f"Failed to create wallet: {wallet_data}")
+                update.message.reply_text("⚠️ Wallet creation failed. Please try again later.")
         else:
-            # If the user already exists, greet them and show their wallet and credits
-            await update.message.reply_text(
+            logger.info(f"Existing user detected: {user_id}")
+            update.message.reply_text(
                 f"👋 Welcome back!\n\n"
                 f"💼 **Wallet Address:** `{user['wallet_address']}`\n"
                 f"🎯 **Credits:** `{user['credits']}`\n\n"
                 f"Use /topup to add more credits and explore Kasper AI!",
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
     except Exception as e:
-        # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
-        await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+        update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
 
 
