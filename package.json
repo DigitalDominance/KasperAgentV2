@@ -8,19 +8,19 @@
     "test": "node test.js"
   },
   "dependencies": {
-    "kaspa-wasm": "0.13.0",        // Kaspa WASM integration
-    "websocket": "^1.0.34",        // WebSocket shim for WebSocket support
-    "dotenv": "^16.0.3",           // Environment variable management
-    "httpx": "^0.24.0",            // For HTTP requests (Python-inspired API)
-    "chalk": "^5.2.0",             // For colorful console output (logging)
-    "mongoose": "^7.4.3",          // For MongoDB interaction in Node.js
-    "nodemon": "^3.0.1",           // For development (auto-restarts on changes)
-    "jsonschema": "^1.4.0",        // For JSON validation
-    "jest": "^29.6.1"              // For testing
+    "kaspa-wasm": "0.13.0",      
+    "websocket": "^1.0.34",       
+    "dotenv": "^16.0.3",         
+    "httpx": "^0.24.0",          
+    "chalk": "^5.2.0",            
+    "mongoose": "^7.4.3",        
+    "nodemon": "^3.0.1",          
+    "jsonschema": "^1.4.0",        
+    "jest": "^29.6.1"              
   },
   "devDependencies": {
-    "eslint": "^8.50.0",           // Code linting for consistent styling
-    "prettier": "^3.1.0"           // Code formatting
+    "eslint": "^8.50.0",           
+    "prettier": "^3.1.0"           
   },
   "engines": {
     "node": ">=16.x"
