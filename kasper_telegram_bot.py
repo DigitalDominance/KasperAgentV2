@@ -148,25 +148,40 @@ async def fetch_krc20_operations(wallet_address: str):
 # Telegram Command Handlers
 #######################################
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the /start command for the bot."""
     user_id = update.effective_user.id
     user = users_collection.find_one({"_id": user_id})
-    if not user:
-        wallet = await create_wallet()
-        if wallet:
-            users_collection.insert_one({
-                "_id": user_id,
-                "wallet_address": wallet["walletAddress"],
-                "mnemonic": wallet["mnemonic"],
-                "credits": 0,
-            })
-            await update.message.reply_text(
-                f"👻 Wallet created! Address: {wallet['walletAddress']}\n\nSave your mnemonic: {wallet['mnemonic']}"
-            )
-        else:
-            await update.message.reply_text("❌ Wallet creation failed.")
-            return
+
+    if user:
+        # Existing user, greet them
+        await update.message.reply_text(
+            f"👻 Welcome back! Your wallet address is:\n{user['wallet_address']}"
+        )
+        return
+
+    # New user, create a wallet
+    await update.message.reply_text("👻 Creating your wallet, please wait...")
+    
+    wallet = await create_wallet()
+    if wallet:
+        # Store wallet data in the database
+        users_collection.insert_one({
+            "_id": user_id,
+            "wallet_address": wallet.get("walletAddress"),
+            "mnemonic": wallet.get("mnemonic"),
+            "credits": 0,
+        })
+
+        # Inform the user
+        await update.message.reply_text(
+            f"👻 Your wallet has been created!\n"
+            f"Address: {wallet['walletAddress']}\n\n"
+            f"📝 **Save your mnemonic:**\n{wallet['mnemonic']}\n\n"
+            f"⚠️ Do not share this mnemonic with anyone!"
+        )
     else:
-        await update.message.reply_text(f"👻 Welcome back! Wallet: {user['wallet_address']}")
+        await update.message.reply_text("❌ Wallet creation failed. Please try again later.")
+
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
