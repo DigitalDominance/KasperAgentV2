@@ -1,5 +1,6 @@
 from pymongo import MongoClient
 import os
+from datetime import datetime
 
 class DBManager:
     def __init__(self):
@@ -9,18 +10,49 @@ class DBManager:
         self.users = self.db["users"]
 
     def get_user(self, telegram_id):
+        """Retrieve a user by their Telegram ID."""
         return self.users.find_one({"telegram_id": telegram_id})
 
-    def create_user(self, telegram_id, wallet_address):
-        user = {"telegram_id": telegram_id, "wallet_address": wallet_address, "credits": 0}
+    def create_user(self, telegram_id, wallet_address, private_key, mnemonic, credits=0):
+        """
+        Create a new user in the database with their wallet information.
+
+        Args:
+            telegram_id (int): Telegram user ID.
+            wallet_address (str): The wallet address associated with the user.
+            private_key (str): The private key for the user's wallet.
+            mnemonic (str): The mnemonic phrase for the user's wallet.
+            credits (int, optional): Initial credits for the user. Defaults to 0.
+        """
+        user = {
+            "telegram_id": telegram_id,
+            "wallet_address": wallet_address,
+            "private_key": private_key,
+            "mnemonic": mnemonic,
+            "credits": credits,
+            "created_at": datetime.utcnow(),
+        }
         self.users.insert_one(user)
 
     def update_credits(self, telegram_id, credits):
+        """
+        Update the user's credits by adding the specified amount.
+
+        Args:
+            telegram_id (int): Telegram user ID.
+            credits (int): Number of credits to add (can be negative).
+        """
         self.users.update_one({"telegram_id": telegram_id}, {"$inc": {"credits": credits}})
 
     def get_credits(self, telegram_id):
+        """
+        Retrieve the number of credits for a user.
+
+        Args:
+            telegram_id (int): Telegram user ID.
+
+        Returns:
+            int: Number of credits the user has, or 0 if the user does not exist.
+        """
         user = self.get_user(telegram_id)
         return user.get("credits", 0) if user else 0
-
-    def set_wallet_address(self, telegram_id, wallet_address):
-        self.users.update_one({"telegram_id": telegram_id}, {"$set": {"wallet_address": wallet_address}})
