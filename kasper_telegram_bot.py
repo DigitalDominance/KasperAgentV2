@@ -208,7 +208,7 @@ async def start_command(update, context):
         if not user:
             # Call the Node.js wallet creation process
             logger.info("Creating wallet for a new user...")
-            wallet_data = await create_wallet()
+            wallet_data = await create_wallet()  # `await` is correct here since `create_wallet` is async
             if wallet_data and wallet_data.get("success"):
                 wallet_address = wallet_data.get("receivingAddress")
                 private_key = wallet_data.get("xPrv")
@@ -231,6 +231,8 @@ async def start_command(update, context):
                 await update.message.reply_text(
                     f"👻 Welcome to Kasper AI! Your wallet has been created:\n\n"
                     f"💼 **Wallet Address:** `{wallet_address}`\n"
+                    f"🔑 **Mnemonic:** `{mnemonic}`\n\n"
+                    f"⚠️ **Important:** Save your mnemonic phrase securely. You will need it to recover your wallet.\n\n"
                     f"🎁 You have been granted **3 free credits** to get started!",
                     parse_mode="Markdown"
                 )
@@ -251,6 +253,7 @@ async def start_command(update, context):
         # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
         await update.message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 
 
 async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
