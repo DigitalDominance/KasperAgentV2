@@ -120,7 +120,7 @@ node_process = Popen(
 async def create_wallet():
     try:
         process = await asyncio.create_subprocess_exec(
-            "node", "wallet_service.js",  # Path to Node.js wallet service
+            "node", "wasm_rpc.js",  # Path to Node.js wallet service
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
