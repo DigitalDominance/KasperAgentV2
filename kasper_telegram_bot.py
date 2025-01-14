@@ -288,10 +288,8 @@ async def start_command(update, context):
 
                 # Update the ghostly message with the wallet details
                 await creating_message.edit_text(
-                    f"👻 Welcome to Kasper AI! Your wallet has been conjured:\n\n"
+                    f"👻 Welcome, im Agent KASPER! Your wallet has been conjured:\n\n"
                     f"💼 **Wallet Address:** `{wallet_address}`\n"
-                    f"🔑 **Mnemonic:** `{mnemonic}`\n\n"
-                    f"⚠️ **Important:** Save your mnemonic phrase securely. You will need it to recover your wallet.\n\n"
                     f"🎁 You have been granted **3 free credits** to get started!",
                     parse_mode="Markdown"
                 )
