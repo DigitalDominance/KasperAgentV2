@@ -111,26 +111,28 @@ async def elevenlabs_tts(text: str) -> bytes:
 # Wallet and KRC20 Functions
 #######################################
 def create_wallet():
+    logger.info("Creating wallet via Node.js...")
     try:
-        logger.info("Creating wallet via Node.js...")
-        process = Popen(
+        process = subprocess.Popen(
             ["node", "wasm_rpc.js", "createWallet"],
-            stdout=PIPE,
-            stderr=PIPE,
-            text=True
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
         stdout, stderr = process.communicate()
-
+        logger.info(f"Raw stdout: {stdout}")
+        logger.error(f"Raw stderr: {stderr}")
         if process.returncode != 0:
-            logger.error(f"Wallet creation failed: {stderr}")
-            return {"success": False, "error": stderr.strip()}
-
-        wallet_data = json.loads(stdout)
-        logger.info(f"Wallet created successfully: {wallet_data}")
-        return wallet_data
+            logger.error("Node.js script failed.")
+            return None
+        return json.loads(stdout.strip())  # Try parsing the output
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing wallet creation response: {e}")
+        return None
     except Exception as e:
         logger.error(f"Error in wallet creation: {e}")
-        return {"success": False, "error": str(e)}
+        return None
+
 
 async def fetch_krc20_operations(wallet_address: str):
     try:
