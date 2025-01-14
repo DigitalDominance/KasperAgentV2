@@ -1,11 +1,7 @@
 // @ts-ignore
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket shim
-const kaspa = require('./wasm/kaspa');
-const fs = require('fs');
-const path = require('path');
-const nodeUtil = require('node:util');
-const { parseArgs: nodeParseArgs } = nodeUtil;
 
+const kaspa = require('./wasm/kaspa');
 const {
     Resolver,
     Encoding,
@@ -16,16 +12,44 @@ const {
     NetworkType,
 } = kaspa;
 
+const fs = require('fs');
+const path = require('path');
 kaspa.initConsolePanicHook();
 
-const {
-    encoding,
-} = parseArgs();
+/**
+ * Parse command-line arguments for wallet operations.
+ * @returns {Object} Parsed arguments including action, mnemonic, and encoding.
+ */
+function parseArgs() {
+    const script = path.basename(process.argv[1]);
+    const args = process.argv.slice(2);
+
+    const action = args[0]; // "create" or "restore"
+    const mnemonic = args[1]; // Optional mnemonic for restoration
+
+    const encoding = Encoding.Borsh; // Default to Borsh encoding
+
+    if (!["create", "restore"].includes(action)) {
+        console.log(`Usage:
+  node ${script} create             # Create a new wallet
+  node ${script} restore <mnemonic> # Restore a wallet using a mnemonic`);
+        process.exit(0);
+    }
+
+    return {
+        action,
+        mnemonic,
+        encoding,
+    };
+}
 
 (async () => {
     try {
         // Set network to Mainnet
         const networkId = NetworkType.Mainnet;
+
+        // Parse command-line arguments
+        const { action, mnemonic, encoding } = parseArgs();
 
         // Initialize resolver and RPC client
         const resolver = new Resolver();
@@ -45,14 +69,12 @@ const {
          * @returns {Object} Wallet data, including mnemonic, keys, and addresses.
          */
         const generateWallet = (mnemonicPhrase = null) => {
-            // Generate or use provided mnemonic
             const mnemonic = mnemonicPhrase ? new Mnemonic(mnemonicPhrase) : Mnemonic.random();
             console.log("Generated mnemonic:", mnemonic.toString());
 
             const seed = mnemonic.toSeed();
             const xPrv = new XPrv(seed);
 
-            // Derive wallet details
             const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
             const receiveAddressPubKey = receiveWalletXPub.deriveChild(0, false).toPublicKey();
             const walletAddress = receiveAddressPubKey.toAddress(networkId);
@@ -74,10 +96,6 @@ const {
             };
         };
 
-        // Parse command-line arguments
-        const action = process.argv[2];
-        const mnemonic = process.argv[3];
-
         if (action === "create") {
             console.log("Creating a new wallet...");
             const wallet = generateWallet(null);
@@ -86,10 +104,6 @@ const {
             console.log("Restoring wallet...");
             const wallet = generateWallet(mnemonic);
             console.log(JSON.stringify(wallet, null, 2));
-        } else {
-            console.log(`Usage:
-  node wasm_rpc.js create             # Create a new wallet
-  node wasm_rpc.js restore <mnemonic> # Restore a wallet using a mnemonic`);
         }
 
         // Disconnect RPC client
