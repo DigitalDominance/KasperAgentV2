@@ -363,6 +363,10 @@ async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Main
 #######################################
 def main():
+    # Initialize the Telegram bot application
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Add command handlers
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("topup", topup_command))
     app.add_handler(CommandHandler("endtopup", endtopup_command))
