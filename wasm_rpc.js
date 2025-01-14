@@ -5,7 +5,6 @@ const kaspa = require('./wasm/kaspa');
 const {
     Mnemonic,
     XPrv,
-    DerivationPath,
     NetworkType,
     Resolver,
     RpcClient,
@@ -13,7 +12,7 @@ const {
 
 kaspa.initConsolePanicHook();
 
-// Initialize RPC client
+// Initialize RPC client with integrated public URLs
 const rpc = new RpcClient({
     resolver: new Resolver(),
     networkId: "mainnet",
