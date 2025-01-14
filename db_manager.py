@@ -12,7 +12,20 @@ class DBManager:
     def get_user(self, telegram_id):
         """Retrieve a user by their Telegram ID."""
         return self.users.find_one({"telegram_id": telegram_id})
+        
+    def is_transaction_processed(self, hash_rev: str) -> bool:
+        """
+        Check if a transaction with the given hashRev is already processed.
+        """
+        return self.db["transactions"].find_one({"hashRev": hash_rev}) is not None
 
+    def save_transaction(self, hash_rev: str, amount: float):
+        """
+        Save a new transaction to the database.
+        """
+        transaction = {"hashRev": hash_rev, "amount": amount, "timestamp": datetime.utcnow()}
+        self.db["transactions"].insert_one(transaction)
+        
     def create_user(self, telegram_id, wallet_address, private_key, mnemonic, credits=0):
         """
         Create a new user in the database with their wallet information.
