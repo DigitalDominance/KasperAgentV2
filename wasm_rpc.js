@@ -1,61 +1,63 @@
-// @ts-ignore
-globalThis.WebSocket = require("websocket").w3cwebsocket; // W3C WebSocket shim
+// Global WebSocket shim for environments without native WebSocket support
+globalThis.WebSocket = require("websocket").w3cwebsocket;
 
-const readline = require("readline");
 const kaspa = require("./wasm/kaspa");
 const {
-  Mnemonic,
-  XPrv,
-  DerivationPath,
-  PublicKey,
-  NetworkType,
-  Resolver,
-  RpcClient,
+    Mnemonic,
+    XPrv,
+    NetworkType,
+    initConsolePanicHook,
+    RpcClient,
+    Resolver,
 } = kaspa;
 
-kaspa.initConsolePanicHook();
+// Enable console panic hooks for debugging
+initConsolePanicHook();
 
+// Initialize RPC client with the integrated public URLs
 const rpc = new RpcClient({
-  resolver: new Resolver(),
-  networkId: "mainnet",
+    resolver: new Resolver(),
+    networkId: "mainnet",
 });
 
-rpc.connect().then(() => {
-  console.log("Connected to Kaspa RPC");
-});
+// Utility function to create a wallet
+async function createWallet() {
+    try {
+        console.log("Creating wallet...");
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    terminal: false,
-});
+        // Generate a new mnemonic
+        const mnemonic = Mnemonic.random();
+        console.log("Generated Mnemonic:", mnemonic.phrase);
 
-function createWallet() {
-    const mnemonic = Mnemonic.random();
-    const seed = mnemonic.toSeed();
-    const xPrv = new XPrv(seed);
+        // Derive keys and addresses
+        const seed = mnemonic.toSeed();
+        const xPrv = new XPrv(seed);
 
-    const receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-    const mainReceiveAddress = receiveWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
+        const receivePath = "m/44'/111111'/0'/0/0";
+        const receiveKey = xPrv.derivePath(receivePath).toXPub().toPublicKey();
+        const receiveAddress = receiveKey.toAddress(NetworkType.Mainnet);
 
-    const changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
-    const changeAddress = changeWalletXPub.deriveChild(0, false).toPublicKey().toAddress(NetworkType.Mainnet);
+        const changePath = "m/44'/111111'/0'/1/0";
+        const changeKey = xPrv.derivePath(changePath).toXPub().toPublicKey();
+        const changeAddress = changeKey.toAddress(NetworkType.Mainnet);
 
-    const privateKey = xPrv.derivePath("m/44'/111111'/0'/0/0").toPrivateKey();
-
-    return {
-        mnemonic: mnemonic.toString(),
-        mainReceiveAddress: mainReceiveAddress.toString(),
-        changeAddress: changeAddress.toString(),
-        privateKey: privateKey.toString(),
-    };
+        return {
+            success: true,
+            mnemonic: mnemonic.phrase,
+            receivingAddress: receiveAddress.toString(),
+            changeAddress: changeAddress.toString(),
+            xPrv: xPrv.intoString("xprv"),
+        };
+    } catch (err) {
+        console.error("Error creating wallet:", err);
+        return { success: false, error: err.message };
+    }
 }
 
-// Command processing
-process.stdin.resume();
-process.on("message", (msg) => {
-    if (msg === "create_wallet") {
-        const wallet = createWallet();
-        process.send(wallet);
-    }
-});
+// Command-line interface for creating a wallet
+if (require.main === module) {
+    (async () => {
+        const result = await createWallet();
+        console.log(JSON.stringify(result, null, 2));
+    })();
+}
