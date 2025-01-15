@@ -20,9 +20,6 @@ class DBManager:
         return self.db["transactions"].find_one({"hashRev": hash_rev}) is not None
 
     def save_transaction(self, hash_rev: str, amount: float, wallet_address: str):
-    """
-    Save a new transaction to the database, including the wallet address.
-    """
         transaction = {
             "hashRev": hash_rev,
             "amount": amount,
