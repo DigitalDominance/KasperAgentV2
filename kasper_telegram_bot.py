@@ -138,10 +138,6 @@ async def elevenlabs_tts(text: str) -> bytes:
             return b""
 		
 async def generate_image_with_openai(prompt: str) -> str:
-    """
-    Generate an image using OpenAI's DALL-E API.
-    Returns the URL of the generated image or None if an error occurs.
-    """
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json"
@@ -160,12 +156,10 @@ async def generate_image_with_openai(prompt: str) -> str:
                 headers=headers,
                 json=payload
             )
-            response.raise_for_status()  # Raise an error for HTTP issues
-            data = response.json()
-            logger.info(f"Image generation successful. Response: {data}")
-            return data["data"][0]["url"]
+            response.raise_for_status()
+            return response.json()["data"][0]["url"]
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP Error {e.response.status_code}: {e.response.text}")
+            logger.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
             logger.error(f"Error in OpenAI API call for image generation: {e}")
         return None
