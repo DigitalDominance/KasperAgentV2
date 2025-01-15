@@ -397,6 +397,7 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
     """
     Handles the /generateImage command to generate an image based on the user's prompt.
     Deducts 3 credits from the user's account.
+    Combines a preset prompt with the user's input.
     """
     user_id = update.effective_user.id
     user = db_manager.get_user(user_id)
@@ -409,30 +410,33 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ You need at least 3 credits to generate an image. Use /topup to add credits.")
         return
 
-    # Extract and sanitize the user's prompt
+    # Extract and sanitize the user's input
     user_input = " ".join(context.args).strip()
     if not user_input:
         await update.message.reply_text("❌ Please provide a prompt for the image. Example: /generateImage a friendly ghost.")
         return
 
     # Log the prompt for debugging
-    logger.info(f"Received prompt for image generation: '{user_input}'")
+    logger.info(f"Received user input for image generation: '{user_input}'")
 
-    # Check prompt length
-    if len(user_input) > 4000:
-        await update.message.reply_text("❌ Your prompt is too long. Please keep it under 4000 characters.")
+    # Check prompt length (combined with preset prompt)
+    preset_prompt = "Create a high-quality, detailed image of "
+    final_prompt = f"{preset_prompt}{user_input}"
+    if len(final_prompt) > 4000:
+        await update.message.reply_text("❌ Your input is too long. Please shorten it.")
         return
 
     await update.message.reply_text("👻 Kasper is conjuring your beautiful art... 🌀")
 
     # Generate the image using OpenAI API
-    image_url = await generate_image_with_openai(user_input)
+    image_url = await generate_image_with_openai(final_prompt)
     if image_url:
         # Deduct credits and send the image
         db_manager.update_credits(user_id, -3)
         await update.message.reply_photo(photo=image_url, caption=f"🎨 Here's your ghostly creation: `{user_input}`")
     else:
         await update.message.reply_text("❌ Failed to generate an image. Please try again later.")
+
 
 
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
