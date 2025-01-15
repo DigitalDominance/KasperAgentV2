@@ -373,7 +373,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     credits = user.get("credits", 0)
     await update.message.reply_text(
         f"👻 Your current balance is **{credits} credits**.\n\n"
-        "Use /topup to add more credits and keep chatting with Kasper AI!",
+        "Use /topup to add more credits and keep chatting with Agent Kasper!",
         parse_mode="Markdown"
     )
 
