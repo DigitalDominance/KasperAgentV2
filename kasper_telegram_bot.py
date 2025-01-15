@@ -387,7 +387,7 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🔍 **Wallet Address:** `{wallet_address}`\n\n"
         f"⚖️ **Conversion Rate:** 200 KASPER = 1 Credit\n\n"
-        "💰 Send KASPER tokens to this address to top up your credits."
+        "💰 Send KASPER tokens to this address to top up your credits.\n\n"
 	"👻 Once transaction is finished, click /endtopup to receive credits",
         parse_mode="Markdown"
     )
