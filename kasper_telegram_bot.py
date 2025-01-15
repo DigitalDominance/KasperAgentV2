@@ -149,23 +149,28 @@ async def generate_image_with_openai(prompt: str) -> str:
         "size": "1024x1024"
     }
 
-    async with httpx.AsyncClient() as client:
+    retries = 3
+    for attempt in range(retries):
         try:
-            logger.info(f"Sending request to OpenAI API with prompt: '{prompt}'")
-            response = await client.post(
-                "https://api.openai.com/v1/images/generations",
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
-            data = response.json()
-            logger.info("Image generated successfully.")
-            return data["data"][0]["url"]
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                logger.info(f"Attempt {attempt + 1} to generate image with prompt: '{prompt}'")
+                response = await client.post(
+                    "https://api.openai.com/v1/images/generations",
+                    headers=headers,
+                    json=payload
+                )
+                response.raise_for_status()
+                data = response.json()
+                logger.info("Image generated successfully.")
+                return data["data"][0]["url"]
+        except httpx.ReadTimeout:
+            logger.warning(f"Timeout on attempt {attempt + 1}. Retrying...")
         except Exception as e:
-            logger.error(f"Error in OpenAI API call for image generation: {traceback.format_exc()}")
-        return None
+            logger.error(f"Error during image generation: {e}")
+            break
+
+    logger.error("All attempts to generate image failed.")
+    return None
 
 
 
