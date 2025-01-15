@@ -143,7 +143,7 @@ async def generate_image_with_openai(prompt: str) -> str:
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "dall-e-2",
+        "model": "dall-e-3",
         "prompt": prompt,
         "n": 1,
         "size": "1024x1024"
