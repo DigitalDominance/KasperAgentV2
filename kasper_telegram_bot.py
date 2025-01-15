@@ -139,7 +139,7 @@ async def elevenlabs_tts(text: str) -> bytes:
 		
 async def generate_image_with_openai(prompt: str) -> str:
     """
-    Generate an image using OpenAI's DALL-E 3 API.
+    Generate an image using OpenAI's DALL-E API.
     Returns the URL of the generated image or None if an error occurs.
     """
     headers = {
@@ -147,24 +147,25 @@ async def generate_image_with_openai(prompt: str) -> str:
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "dall-e-2",
+        "model": "dall-e-3",
         "prompt": prompt,
         "n": 1,
-        "size": "1024x1024",
-        "response_format": "url",
+        "size": "1024x1024"
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data["data"][0]["url"]
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
-    except Exception as e:
-        logger.error(f"Error in OpenAI API call for image generation: {e}")
-    return None
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                "https://api.openai.com/v1/images/generations",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()  # Ensure HTTP errors are raised
+            return response.json()["data"][0]["url"]
+        except Exception as e:
+            logger.error(f"Error in OpenAI API call for image generation: {e}")
+            return None
+
 		
 async def generate_openai_response(user_text: str) -> str:
     headers = {
