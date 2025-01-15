@@ -19,18 +19,12 @@ class DBManager:
         """
         return self.db["transactions"].find_one({"hashRev": hash_rev}) is not None
 
-    def save_transaction(self, hash_rev: str, amount: float, wallet_address: str):
-    """
-    Save a new transaction to the database, including the wallet address.
-    """
-    transaction = {
-        "hashRev": hash_rev,
-        "amount": amount,
-        "walletAddress": wallet_address,
-        "timestamp": datetime.utcnow()
-    }
-    self.db["transactions"].insert_one(transaction)
-
+    def save_transaction(self, hash_rev: str, amount: float):
+        """
+        Save a new transaction to the database.
+        """
+        transaction = {"hashRev": hash_rev, "amount": amount, "timestamp": datetime.utcnow()}
+        self.db["transactions"].insert_one(transaction)
         
     def create_user(self, telegram_id, wallet_address, private_key, mnemonic, credits=0):
         """
