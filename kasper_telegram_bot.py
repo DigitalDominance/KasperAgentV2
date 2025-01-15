@@ -160,11 +160,16 @@ async def generate_image_with_openai(prompt: str) -> str:
                 headers=headers,
                 json=payload
             )
-            response.raise_for_status()  # Ensure HTTP errors are raised
-            return response.json()["data"][0]["url"]
+            response.raise_for_status()  # Raise an error for HTTP issues
+            data = response.json()
+            logger.info(f"Image generation successful. Response: {data}")
+            return data["data"][0]["url"]
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP Error {e.response.status_code}: {e.response.text}")
         except Exception as e:
             logger.error(f"Error in OpenAI API call for image generation: {e}")
-            return None
+        return None
+
 
 		
 async def generate_openai_response(user_text: str) -> str:
@@ -384,7 +389,6 @@ async def topup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 	
-MAX_PROMPT_LENGTH = 1000  # Maximum characters for DALL-E 2
 
 async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -402,10 +406,18 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("❌ You need at least 3 credits to generate an image. Use /topup to add credits.")
         return
 
-    # Extract the user's prompt
+    # Extract and sanitize the user's prompt
     user_input = " ".join(context.args).strip()
     if not user_input:
         await update.message.reply_text("❌ Please provide a prompt for the image. Example: /generateImage a friendly ghost.")
+        return
+
+    # Log the prompt for debugging
+    logger.info(f"Received prompt for image generation: '{user_input}'")
+
+    # Check prompt length
+    if len(user_input) > 4000:
+        await update.message.reply_text("❌ Your prompt is too long. Please keep it under 4000 characters.")
         return
 
     await update.message.reply_text("👻 Kasper is conjuring your beautiful art... 🌀")
@@ -418,6 +430,7 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_photo(photo=image_url, caption=f"🎨 Here's your ghostly creation: `{user_input}`")
     else:
         await update.message.reply_text("❌ Failed to generate an image. Please try again later.")
+
 
 async def endtopup_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
