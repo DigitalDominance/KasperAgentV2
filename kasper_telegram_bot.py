@@ -143,7 +143,7 @@ async def generate_image_with_openai(prompt: str) -> str:
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "dall-e-3",
+        "model": "dall-e-2",
         "prompt": prompt,
         "n": 1,
         "size": "1024x1024"
@@ -152,7 +152,7 @@ async def generate_image_with_openai(prompt: str) -> str:
     retries = 3
     for attempt in range(retries):
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(50.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(100.0)) as client:
                 logger.info(f"Attempt {attempt + 1} to generate image with prompt: '{prompt}'")
                 response = await client.post(
                     "https://api.openai.com/v1/images/generations",
