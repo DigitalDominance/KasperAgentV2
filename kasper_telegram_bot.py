@@ -271,8 +271,8 @@ async def fetch_krc20_operations(wallet_address: str):
                 # Ensure it's a TRANSFER to the correct address and not already processed
                 if op_type.lower() == "transfer" and to_address == wallet_address:
                     if not db_manager.is_transaction_processed(hash_rev):
-                        # Save transaction to database
-                        db_manager.save_transaction(hash_rev, amount)
+                        # Save transaction to database, including wallet address
+                        db_manager.save_transaction(hash_rev, amount, wallet_address)
                         transactions.append({"hashRev": hash_rev, "amount": amount})
 
             logger.info(f"New transactions found: {transactions}")
@@ -280,6 +280,7 @@ async def fetch_krc20_operations(wallet_address: str):
     except Exception as e:
         logger.error(f"Error fetching KRC20 operations: {e}")
         return []
+
         
 async def send_welcome_message(update, context):
     await update.message.reply_text(
