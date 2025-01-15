@@ -350,12 +350,13 @@ async def start_command(update, context):
         else:
             # If the user already exists, greet them and show their wallet and credits
             await update.message.reply_text(
-                f"👋 Welcome back!\n\n"
-                f"💼 **Wallet Address:** `{user['wallet_address']}`\n"
-                f"🎯 **Credits:** `{user['credits']}`\n\n"
-                f"Use /topup to add more credits and explore Kasper AI!",
-                parse_mode="Markdown"
-            )
+    f"👻 **Welcome back, my spirited friend!**\n\n"
+    f"💼 **Your Haunted Wallet Address:** `{user['wallet_address']}`\n"
+    f"🎯 **Ectoplasmic Credits Remaining:** `{user['credits']}`\n\n"
+    f"🌀 Use **/topup** to replenish your ghostly energy and continue exploring the mysteries of Kasper AI! 👻",
+    parse_mode="Markdown"
+)
+
     except Exception as e:
         # Log and handle unexpected errors
         logger.error(f"Error in start_command for user {user_id}: {e}")
