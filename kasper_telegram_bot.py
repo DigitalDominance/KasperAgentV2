@@ -420,7 +420,7 @@ async def generate_image_command(update: Update, context: ContextTypes.DEFAULT_T
     logger.info(f"Received user input for image generation: '{user_input}'")
 
     # Check prompt length (combined with preset prompt)
-    preset_prompt = "Create a high-quality, detailed image of "
+    preset_prompt = "Make the image KASPER themed. (our white ghost with a feint neon blue glow at the ends of his ridges)"
     final_prompt = f"{preset_prompt}{user_input}"
     if len(final_prompt) > 4000:
         await update.message.reply_text("❌ Your input is too long. Please shorten it.")
