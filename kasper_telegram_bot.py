@@ -152,7 +152,7 @@ async def generate_image_with_openai(prompt: str) -> str:
     retries = 3
     for attempt in range(retries):
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(50.0)) as client:
                 logger.info(f"Attempt {attempt + 1} to generate image with prompt: '{prompt}'")
                 response = await client.post(
                     "https://api.openai.com/v1/images/generations",
