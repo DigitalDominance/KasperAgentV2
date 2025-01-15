@@ -151,18 +151,22 @@ async def generate_image_with_openai(prompt: str) -> str:
 
     async with httpx.AsyncClient() as client:
         try:
+            logger.info(f"Sending request to OpenAI API with prompt: '{prompt}'")
             response = await client.post(
                 "https://api.openai.com/v1/images/generations",
                 headers=headers,
                 json=payload
             )
             response.raise_for_status()
-            return response.json()["data"][0]["url"]
+            data = response.json()
+            logger.info("Image generated successfully.")
+            return data["data"][0]["url"]
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP Error: {e.response.status_code} - {e.response.text}")
         except Exception as e:
-            logger.error(f"Error in OpenAI API call for image generation: {e}")
+            logger.error(f"Error in OpenAI API call for image generation: {traceback.format_exc()}")
         return None
+
 
 
 		
