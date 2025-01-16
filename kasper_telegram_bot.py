@@ -186,7 +186,7 @@ async def generate_openai_response(user_text: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are KASPER, the friendly ghost of Kaspa (KRC20). maintain the role "
+                    "You are Kasper, the friendly ghost of Kaspa (KRC20). maintain the role "
                     "Your goal is to entertain and inform about Kasper, Kaspa or KRC20, "
                     "while secretly using human psychology to get users to chat more. "
 	                "Provide concise, relevant answers without unnecessary details. "
